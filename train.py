@@ -40,7 +40,7 @@ def get_regression_targets(n:int, k: int, l: int, generators: list[torch.nn.Modu
             idx = mask.nonzero().squeeze()
             z = torch.cat([z, _z[idx]])
         z = z[:n]
-    elif sample_mode == 'off_diagonal':
+    elif sample_mode == 'pure_off_diagonal':
         _n = 10*n
         z = torch.Tensor(0, k, l)
         while z.shape[0] < n:
@@ -54,6 +54,20 @@ def get_regression_targets(n:int, k: int, l: int, generators: list[torch.nn.Modu
             idx = mask.nonzero().squeeze()
             z = torch.cat([z, _z[idx]])
         z = z[:n]
+    elif sample_mode == 'off_diagonal':
+        _n = 10*n
+        z = torch.Tensor(0, k, l)
+        while z.shape[0] < n:
+            # sample randomly in whole space
+            _z = torch.rand(_n, k, l)  
+            # compute distances between blocks
+            triuidx = torch.triu_indices(k, k)  
+            mutual_distances = (_z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1) - _z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1).transpose(1, 2))[:, triuidx[0], triuidx[1], :]
+            # reject samples on diagonal
+            mask = (mutual_distances.abs() > 2*delta).any(dim=1).any(dim=1)
+            idx = mask.nonzero().squeeze()
+            z = torch.cat([z, _z[idx]])
+        z = z[:n]
     elif sample_mode == 'orthogonal':
         _z = torch.rand(n, l)
         mask = torch.stack([torch.arange(n), torch.randint(k, (n, 1)).squeeze(dim=1)], dim=1).long()
@@ -64,6 +78,8 @@ def get_regression_targets(n:int, k: int, l: int, generators: list[torch.nn.Modu
         _z_diag = torch.repeat_interleave(torch.rand(n_diag, l), k, dim=0).reshape(n_diag, k, l)
         _z_rand = torch.rand(n - n_diag, k, l)
         z = torch.cat([_z_diag, _z_rand])[torch.randperm(n)]
+    else:
+        raise Exception(f'no sampling mode {sample_mode}')
     
     x = [torch.stack([generators[j](z[i][j]) for j in range(k)]) for i in range(n)]
     x = torch.stack(x)
@@ -181,6 +197,38 @@ class OODDataset(Dataset):
         self.z, self.x = get_regression_targets(n, k, l, generators, **sample_kwargs)
 
 
+class GenerativeDataloader:
+    def __init__(self, bs:int, k: int, l: int, generators: list[torch.nn.Module], n: int=64, **sample_kwargs):
+        self.k = k
+        self.l = l
+        self.generators = generators
+        self.bs = bs
+        self.sample_kwargs = sample_kwargs
+        self.len = n
+        self.current = -1
+    
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.current += 1
+        if self.current < self.len:
+            z, x = get_regression_targets(self.bs, self.k, self.l, self.generators, **self.sample_kwargs)
+            return x, z
+        self.current = -1
+        raise StopIteration
+
+
+class Regularizer:
+    def __init__(self, function: torch.nn.Module, weight: float=1, **kwargs):
+        self.function = function
+        self.weight = weight
+        self.kwargs = kwargs
+
+    def __call__(self, model, x):
+        return self.weight * self.function(model, x, **self.kwargs)
+
+
 def train(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader, lr: float=0.001, epochs: int=10):
     criterion = nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
@@ -206,8 +254,8 @@ def train(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader, lr: 
 
 
 # train for the same number of iterations (batches) independent of dataset size (i.e. without epochs)
-def train_iter(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader, lr: float=0.001, regularizer: torch.nn.Module=None, lamda: float=1., **reg_kwargs):
-    criterion = nn.MSELoss()
+def train_iter(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader, lr: float=0.001, criterion: torch.nn.Module=nn.MSELoss, regularizer: Regularizer=None):
+    criterion = criterion()
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
 
     cum_loss = 0
@@ -224,7 +272,7 @@ def train_iter(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader,
         z_hat = model(x)
         loss = criterion(z_hat, z)
         if regularizer is not None:
-            loss += lamda * regularizer(model, x, **reg_kwargs)
+            loss += regularizer(model, x)
         cum_loss += loss
         loss.backward()
         optimizer.step()
@@ -233,29 +281,35 @@ def train_iter(model: torch.nn.Module, trainloader: torch.utils.data.DataLoader,
     return cum_loss.to(torch.device('cpu')).item()
 
 
-def comp_contrast(func: torch.nn.Module, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+def comp_contrast(func: torch.nn.Module, inputs: torch.Tensor, k: int=4, l: int=2, p: float=2) -> torch.Tensor:
     """Calculate the compositional contrast for a function `func` with respect to `inputs`.
 
     The output is calculated as the mean over the batch dimension.
     `inputs` needs to be flattened except for the batch dimension and `requires_grad` needs to be set to `True`.
     """
     assert inputs.requires_grad == True, 'To calculate the derivative by `inputs` `requires_grad` needs to be set to `True`.'
+    assert p > 0
 
     # compute the jacobian with respect to the inputs
     jac = functorch.vmap(functorch.jacrev(func))(inputs).transpose(1, 2)
 
     # compute the compositional contrast as the sum of all pairs of partial derivatives for all outputs
     # average over the batch dimension
-    cc = torch.abs(jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1)) * torch.abs(jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1).transpose(2, 3))
+    if p == 1:
+        cc = (jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1)).abs() * (jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1).transpose(2, 3)).abs()
 
-    block_diagonal = torch.block_diag(*torch.ones(4, 2, 2, dtype=bool)).to(dev)
+        block_diagonal = torch.block_diag(*torch.ones(k, l, l, dtype=bool)).to(dev)
+        cc = torch.where(~block_diagonal, cc, 0).triu(1).sum((1, 2, 3)).mean()
+        return cc
+    
+    cc = (jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1)).pow(p) * (jac.unsqueeze(2).repeat(1, 1, jac.shape[2], 1).transpose(2, 3)).pow(2)
 
-    cc = torch.where(~block_diagonal, cc, 0).triu(1).sum((1, 2, 3)).mean()
-
+    block_diagonal = torch.block_diag(*torch.ones(k, l, l, dtype=bool)).to(dev)
+    cc = torch.where(~block_diagonal, cc, 0).triu(1).sum((2, 3)).pow(1/p).sum(1).mean()
     return cc
 
 
-def sparse_hess(func: torch.nn.Module, inputs: torch.Tensor, p: int=0, **kwargs) -> torch.Tensor:
+def sparse_hess(func: torch.nn.Module, inputs: torch.Tensor, p: int=2) -> torch.Tensor:
     hess = functorch.vmap(functorch.hessian(func))(inputs)
 
     return torch.mean(hess.norm(dim=(1, 2, 3), p=p))
@@ -294,107 +348,110 @@ def test(model: torch.nn.Module, dataloader: torch.utils.data.DataLoader, metric
 
 
 def main():
-    k = 4
-    l = 2
-    m = 10
-
     torch.manual_seed(0)
 
-    print('Build generators...')
-    g = get_generators(k, l, m)
+    experiment_name = 'gs_dim_infsampl'
 
-    print('Build test data...')
-    te_ds = Dataset(1000, k, l, g, sample_mode='random')
-    te_ldr = torch.utils.data.DataLoader(te_ds, batch_size=1000, shuffle=True)
-
-    # epochs = 200
-    # b_per_epoch = 100
-    iter = 50000
-    bs = 4096
-    lr = 0.1
-    lr_steps = []
-    experiment_suffix = ''
-
-    samplings = [
-        # {'str': 'rand', 'name': 'random', 'n': 4096, 'kwargs': {'sample_mode': 'random'}},
-        # {'str': 'orth', 'name': 'orthogonal', 'n': 4096, 'kwargs': {'sample_mode': 'orthogonal'}},
-        # {'str': 'diag', 'name': 'diagonal', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.}},
-        {'str': 'diag001', 'name': 'diagonal ∆0.01', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.01}},
-        # {'str': 'diag002', 'name': 'diagonal ∆0.02', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.02}},
-        # {'str': 'diag005', 'name': 'diagonal ∆0.05', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.05}},
-        {'str': 'diag01', 'name': 'diagonal ∆0.1', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.1}},
-        {'str': 'diag02', 'name': 'diagonal ∆0.2', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.2}},
-        # {'str': 'diag05', 'name': 'diagonal ∆0.5', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.5}},
+    settings = [
+        {'str': 'k4l2m10', 'k': 4, 'l': 2, 'm': 10},
+        {'str': 'k8l2m10', 'k': 8, 'l': 2, 'm': 10},
+        {'str': 'k8l2m10', 'k': 4, 'l': 4, 'm': 10},
+        {'str': 'k8l2m10', 'k': 12, 'l': 2, 'm': 10},
     ]
 
+    samplings = [
+        # {'str': 'rand', 'name': 'random', 'n': 4096, 'bs': 64, 'kwargs': {'sample_mode': 'random'}},
+        # {'str': 'rand', 'name': 'random', 'n': -1, 'bs': 64, 'kwargs': {'sample_mode': 'random'}},
+        # {'str': 'orth', 'name': 'orthogonal', 'n': 4096, 'kwargs': {'sample_mode': 'orthogonal'}},
+        # {'str': 'diag', 'name': 'diagonal', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.}},
+        # {'str': 'diag001', 'name': 'diagonal ∆0.01', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.01}},
+        # {'str': 'diag002', 'name': 'diagonal ∆0.02', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.02}},
+        # {'str': 'diag005', 'name': 'diagonal ∆0.05', 'n': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.05}},
+        # {'str': 'diag01', 'name': 'diagonal ∆0.1', 'n': 4096, 'bs': 4096, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.1}},
+        {'str': 'diag02', 'name': 'diagonal ∆0.2', 'n': 4096, 'bs': 64, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.2}},
+        {'str': 'diag02inf', 'name': 'diagonal ∆0.2', 'n': -1, 'bs': 64, 'kwargs': {'sample_mode': 'diagonal', 'delta': 0.2}},
+    ]
+    # TODO move max_iter to samplings
+
     models = [
-        {'str': 'MLP', 'name': 'MLP', 'model': MLPTanh, 'regularizer': None, 'kwargs': {}},
-        # {'str': 'MLPcomp', 'name': 'compositional MLP', 'model': CompositionalMLP, 'regularizer': None, 'kwargs': {}},
-        {'str': 'MLPjac', 'name': 'MLP compositional contrast', 'model': MLPTanh, 'regularizer': comp_contrast, 'kwargs': {}},
-        {'str': 'MLPhes0', 'name': 'MLP sparse hessian L0', 'model': MLPTanh, 'regularizer': sparse_hess, 'kwargs': {'p': 0}},
-        {'str': 'MLPhes1', 'name': 'MLP sparse hessian L1', 'model': MLPTanh, 'regularizer': sparse_hess, 'kwargs': {'p': 1}},
-        {'str': 'MLPhes2', 'name': 'MLP sparse hessian L2', 'model': MLPTanh, 'regularizer': sparse_hess, 'kwargs': {'p': 2}},
+        {'str': 'MLP', 'name': 'MLP', 'model': MLPTanh, 'max_iter': 100001, 'lr': 0.1, 'lr_steps': [50000]},
+        # {'str': 'MLPcomp', 'name': 'compositional MLP', 'model': CompositionalMLP, 'regularizer': None, },
+        {'str': 'MLP01cc2', 'name': 'MLP compositional contrast λ=0.1', 'model': MLPTanh, 'max_iter': 100001, 'lr': 0.1, 'lr_steps': [50000], 'regularizer': {'function': comp_contrast, 'weight': 0.1, 'p': 2}},
+        # {'str': 'MLP001hes2', 'name': 'MLP Hessian L2 λ=0.01', 'model': MLPTanh, 'regularizer': {'function': sparse_hess, 'weight': 0.01, 'kwargs': {'p': 2}}},
     ]
 
     res = []
     now = datetime.datetime.now()
-    lr_str = str(lr).replace(".", "")
-    res_dir = f'res/{now:%Y%m%d%H%M}_i{iter}_lr{lr_str}_bs{bs}{experiment_suffix}'
+    res_dir = f'res/{now:%Y%m%d%H%M}_{experiment_name}'
     if os.path.exists(res_dir): shutil.rmtree(res_dir)
     os.mkdir(res_dir)
 
-    for sampling in tqdm(samplings, position=0):
-        # print('Build train data...')
-        n = sampling['n']
-        id_ds = Dataset(n, k, l, g, **sampling['kwargs'])
-        id_ldr = torch.utils.data.DataLoader(id_ds, batch_sampler=torch.utils.data.BatchSampler(torch.utils.data.RandomSampler(id_ds), bs, False))
-        ood_ds = OODDataset(1000, k, l, g, **sampling['kwargs'])
-        ood_ldr = torch.utils.data.DataLoader(ood_ds, batch_size=1000, shuffle=True)
+    for setting in tqdm(settings, position=0):
+        k = setting['k']
+        l = setting['l']
+        m = setting['m']
+        # print('Build generators...')
+        g = get_generators(k, l, m)
+        # print('Build test data...')
+        te_ds = Dataset(1000, k, l, g, sample_mode='random')
+        te_ldr = torch.utils.data.DataLoader(te_ds, batch_size=1000, shuffle=True)
 
-        for model in tqdm(models, position=1, leave=False):
-            # print('Build model...')
-            mdl = model['model'](k, l, m).to(dev)
+        for sampling in tqdm(samplings, position=1, leave=False):
+            # print('Build train data...')
+            n = sampling['n']
+            bs = sampling['bs']
+            if n == -1:
+                id_ldr = GenerativeDataloader(bs, k, l, g, **sampling['kwargs'])
+            else:
+                id_ds = Dataset(n, k, l, g, **sampling['kwargs'])
+                id_ldr = torch.utils.data.DataLoader(id_ds, batch_sampler=torch.utils.data.BatchSampler(torch.utils.data.RandomSampler(id_ds), bs, False))
+            ood_ds = OODDataset(1000, k, l, g, **sampling['kwargs'])
+            ood_ldr = torch.utils.data.DataLoader(ood_ds, batch_size=1000, shuffle=True)
 
-            # print('Train model...')
-            for i in tqdm(range(iter), position=2, leave=False):
-                if i in lr_steps: lr *= 0.1
+            for model in tqdm(models, position=2, leave=False):
+                # print('Build model...')
+                mdl = model['model'](k, l, m).to(dev)
+                lr = model['lr']
+                regularizer = Regularizer(**model['regularizer'], k=k, l=l) if 'regularizer' in model else None
 
-                loss = train_iter(mdl, id_ldr, lr=lr, regularizer=model['regularizer'], **model['kwargs'])
-                res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'train loss', 'domain': 'ID', 'val': loss})
+                checkpoint = model.get('load', None)
+                if checkpoint is not None:
+                    mdl.load_state_dict(torch.load(checkpoint))
 
-                if i % 1000 == 999:
-                    jac_id = test(mdl, id_ldr, comp_contrast)
-                    jac_ood = test(mdl, ood_ldr, comp_contrast)
-                    hes0_id = test(mdl, id_ldr, sparse_hess)
-                    hes0_ood = test(mdl, ood_ldr, sparse_hess)
-                    hes1_id = test(mdl, id_ldr, sparse_hess, p=1)
-                    hes1_ood = test(mdl, ood_ldr, sparse_hess, p=1)
-                    hes2_id = test(mdl, id_ldr, sparse_hess, p=2)
-                    hes2_ood = test(mdl, ood_ldr, sparse_hess, p=2)
+                # print('Train model...')
+                for i in tqdm(range(model['max_iter']), position=3, leave=False):
+                    if i in model['lr_steps']: lr /= 3
 
-                    r2 = test(mdl, te_ldr)
-                    r2_id = test(mdl, id_ldr)
-                    r2_ood = test(mdl, ood_ldr)
+                    loss = train_iter(mdl, id_ldr, lr=lr, regularizer=regularizer)
+                    res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'train loss', 'domain': 'ID', 'val': loss})
 
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'compositional contrast', 'domain': 'ID', 'val': jac_id})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'compositional contrast', 'domain': 'OOD', 'val': jac_ood})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L0', 'domain': 'ID', 'val': hes0_id})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L0', 'domain': 'OOD', 'val': hes0_ood})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L1', 'domain': 'ID', 'val': hes1_id})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L1', 'domain': 'OOD', 'val': hes1_ood})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L2', 'domain': 'ID', 'val': hes2_id})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'sparse Hessian L2', 'domain': 'OOD', 'val': hes2_ood})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'test R²', 'domain': 'all', 'val': r2})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'test R²', 'domain': 'ID', 'val': r2_id})
-                    res.append({'n data': n, 'n samples': (i+1)*bs, 'model': model['name'], 'sampling': sampling['name'], 'metric': 'test R²', 'domain': 'OOD', 'val': r2_ood})
-            
-            # print('Save model...')
-            torch.save(mdl.state_dict(), f"{res_dir}/{sampling['str']}_{model['str']}.pth")
+                    if i % 1000 == 0:
+                        jac_id = test(mdl, id_ldr, comp_contrast, k=k, l=l)
+                        jac_ood = test(mdl, ood_ldr, comp_contrast, k=k, l=l)
+                        hes2_id = test(mdl, id_ldr, sparse_hess, p=2)
+                        hes2_ood = test(mdl, ood_ldr, sparse_hess, p=2)
 
-    print('Save results...')
-    res_df = pd.DataFrame.from_dict(res)
-    with open(f'{res_dir}/df.pkl', 'wb') as f:
-        pk.dump(res_df, f)
+                        r2 = test(mdl, te_ldr)
+                        r2_id = test(mdl, id_ldr)
+                        r2_ood = test(mdl, ood_ldr)
+
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'compositional contrast', 'domain': 'ID', 'val': jac_id})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'compositional contrast', 'domain': 'OOD', 'val': jac_ood})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'sparse Hessian L2', 'domain': 'ID', 'val': hes2_id})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'sparse Hessian L2', 'domain': 'OOD', 'val': hes2_ood})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'test R²', 'domain': 'all', 'val': r2})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'test R²', 'domain': 'ID', 'val': r2_id})
+                        res.append({'n data': n, 'n samples': (i+1)*bs, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'test R²', 'domain': 'OOD', 'val': r2_ood})
+                
+                lr_str = str(lr).replace(".", "")
+                save_path = f"{res_dir}/{setting['str']}_{sampling['str']}_{model['str']}.pth"
+                print(f'Save model {save_path} ...')
+                torch.save(mdl.state_dict(), save_path)
+
+            print('Save results...')
+            res_df = pd.DataFrame.from_dict(res)
+            with open(f'{res_dir}/df.pkl', 'wb') as f:
+                pk.dump(res_df, f)
 
 
 if __name__ == "__main__":
