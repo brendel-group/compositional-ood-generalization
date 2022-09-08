@@ -19,10 +19,6 @@ echo $SLURM_JOB_ID
 nvidia-smi
 
 # build and run the singularity container
-# - mount the datasets and user directories
-# - test whether there is a dropbear host key file, otherwise create it
-# - manually add the addresses from above to dropbear
-# singularity run --nv --fakeroot\
 srun singularity exec --nv \
     --bind /mnt/qb/work/bethge/$USER \
     docker://pytorch/pytorch \

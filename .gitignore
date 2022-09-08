@@ -1,3 +1,4 @@
 .conda_config
 *.pth
 __pycache__/
+nohup.out
