@@ -95,8 +95,9 @@ def sample_latents(n:int, k: int, l: int, sample_mode: str='random', correlation
             # sample randomly in whole space
             _z = torch.rand(_n, k, l)  
             # compute distances between blocks
-            triuidx = torch.triu_indices(k, k)  
-            mutual_distances = (_z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1) - _z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1).transpose(1, 2))[:, triuidx[0], triuidx[1], :]
+            __z = _z.transpose(1, 2)
+            triu_idcs = torch.triu_indices(k, k, 1)
+            mutual_distances = (__z.unsqueeze(2) - __z.unsqueeze(2).transpose(2, 3))[:, :, triu_idcs[0], triu_idcs[1]]
             # reject samples on diagonal
             mask = (mutual_distances.abs() > 2*delta).any(dim=1).any(dim=1)
             idx = mask.nonzero().squeeze(1)
@@ -112,8 +113,9 @@ def sample_latents(n:int, k: int, l: int, sample_mode: str='random', correlation
             # sample randomly in whole space
             _z = torch.rand(_n, k, l)  
             # compute distances between blocks
-            triuidx = torch.triu_indices(k, k)  
-            mutual_distances = (_z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1) - _z.unsqueeze(1).repeat(1, _z.shape[1], 1, 1).transpose(1, 2))[:, triuidx[0], triuidx[1], :]
+            __z = _z.transpose(1, 2)
+            triu_idcs = torch.triu_indices(k, k, 1)
+            mutual_distances = (__z.unsqueeze(2) - __z.unsqueeze(2).transpose(2, 3))[:, :, triu_idcs[0], triu_idcs[1]]
             # reject samples on diagonal
             mask = (mutual_distances.abs() > 2*delta).any(dim=1).all(dim=1)
             idx = mask.nonzero().squeeze(1)
