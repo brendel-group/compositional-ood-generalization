@@ -80,14 +80,15 @@ def sample_latents(n:int, k: int, l: int, sample_mode: str='random', correlation
             _z = torch.repeat_interleave(torch.rand(n, l), k, dim=0).reshape(n, k, l)
             # apply random offset
             _z += torch.rand(n, k, l) * 2 * delta - delta
-            # reject samples outside the domain
-            mask = ~((_z - 0.5).abs() > 0.5).flatten(1).any(1)
+            # only keep samples inside [0, 1]^{k×l}
+            mask = ((_z - 0.5).abs() <= 0.5).flatten(1).all(1)
             idx = mask.nonzero().squeeze(1)
             z = torch.cat([z, _z[idx]])
         z = z[:n]
     
     elif sample_mode == 'off_diagonal':
         # sample the opposite of the diagonal case
+        #  i.e. points where _not all_ components lie within a `k`-cube with side lenght 2*`delta` from the diagonal
         _n = 10*n
         z = torch.Tensor(0, k, l)
         while z.shape[0] < n:
@@ -103,8 +104,8 @@ def sample_latents(n:int, k: int, l: int, sample_mode: str='random', correlation
         z = z[:n]
     
     elif sample_mode == 'pure_off_diagonal':
-        # sample points where no component lies within a `k`-cube with side length 2*`delta` from the diagonal
-        # this is not the exact opposite of the diagonal case, where not all component must lie on the diagonal 
+        # sample points where _no_ component lies within a `k`-cube with side length 2*`delta` from the diagonal
+        #  this is not the exact opposite of the diagonal case, where not all component must lie on the diagonal 
         _n = 10*n
         z = torch.Tensor(0, k, l)
         while z.shape[0] < n:
