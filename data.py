@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple, Union
 import math
 import torch
 import torch.nn as nn
@@ -28,8 +28,10 @@ def init_min_cond(model: nn.Module, n_trials: int=7500) -> torch.Tensor:
 class Generator(nn.Module):
     """Generator mapping from `k`×`l`-dimensional latents to a `k`×`m` dimensional output.
     """
-    def __init__(self, k: int, l: int, m: int, D: int=50, nonlin=nn.LeakyReLU(.2)):
+    def __init__(self, k: int, l: int, m: int, D: int=50, nonlin=nn.LeakyReLU(.2), **kwargs):
         super().__init__()
+        self.k = k
+        self.l = l
         self.gis = nn.ModuleList([self.build_gi(l, m, D, nonlin) for _ in range(k)])
     
     def build_gi(self, l, m, D, nonlin):
@@ -141,16 +143,16 @@ def sample_latents(n:int, k: int, l: int, sample_mode: str='random', correlation
 
 
 class Dataset(torch.utils.data.TensorDataset):
-    def __init__(self, n: int, k: int, l: int, m: int, generator: nn.Module, sample_kwargs: Dict=None):
+    def __init__(self, n: int, k: int, l: int, generator: nn.Module, sample_kwargs: Dict=None):
         z = sample_latents(n, k, l, **sample_kwargs)
-        x = generator(z)
+        x = generator(z).detach()
         super().__init__(x, z)
 
 
 class GenDataset(torch.utils.data.IterableDataset):
     """Dataset that generates new samples every epoch.
     """
-    def __init__(self, n: int, k: int, l: int, m: int, generator: nn.Module, sample_kwargs: Dict=None):
+    def __init__(self, n: int, k: int, l: int, generator: nn.Module, sample_kwargs: Dict=None):
         super().__init__()
         self.n, self.k, self.l, self.sample_kwargs = n, k, l, sample_kwargs
         self.g = generator
@@ -194,29 +196,26 @@ class NBatchDataLoader(torch.utils.data.DataLoader):
         super().__init__(dataset, batch_sampler=batch_sampler)
 
 
-def build_dataloaders(
-    k: int,
-    l: int,
-    m: int,
-    n: int,
-    batch_size: int=64,
+def build_datasets(
+    generator: Generator,
+    n: int=1024,
     generative: bool=False,
-    generator_kwargs: Dict=None,
     sample_kwargs: Dict=None,
-    **kwargs):
-    generator = Generator(k, l, m, **generator_kwargs)
+    **kwargs
+) -> Tuple[Union[Dataset, GenDataset]]:
+    k, l = generator.k, generator.l
+    
+    train_ds = GenDataset if generative else Dataset
+    train = train_ds(n, k, l, generator, sample_kwargs)
 
-    dataset = GenDataset if generative else Dataset
-
-    id_ds = dataset(n, k, l, m, generator, sample_kwargs)
-    id_ldr = torch.utils.data.DataLoader(id_ds, batch_size=batch_size)
+    test_id = Dataset(1024, k, l, generator, sample_kwargs)
 
     if sample_kwargs['sample_mode'] == 'diagonal':
         sample_kwargs['sample_mode'] = 'off_diagonal'
     else:
         raise NotImplementedError
+    test_ood = Dataset(1024, k, l, generator, sample_kwargs)
     
-    ood_ds = dataset(n, k, l, m, generator, sample_kwargs)
-    ood_ldr = torch.utils.data.DataLoader(ood_ds, batch_size=batch_size)
+    test_rand = Dataset(1024, k, l, generator, {'sample_mode': 'random'})
 
-    return id_ldr, ood_ldr
+    return train, test_id, test_ood, test_rand

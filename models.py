@@ -42,3 +42,7 @@ class Autoencoder(nn.Module):
     def forward(self, x):
         z = self.f(x)
         return self.g(z), z
+
+
+def factory(name, *args, **kwargs):
+    return globals()[name](*args, **kwargs)

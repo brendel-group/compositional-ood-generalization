@@ -1,0 +1,60 @@
+name: testing_new_cc
+generators:
+  # - name: k4l2m10
+  #   k: 4
+  #   l: 2
+  #   m: 10
+  - name: k8l2m10
+    k: 8
+    l: 2
+    m: 10
+  - name: k12l2m10
+    k: 12
+    l: 2
+    m: 10
+  - name: k8l3m10
+    k: 8
+    l: 3
+    m: 10
+datasets:
+  - name: diag02
+    display_name: diagonal ∆0.2
+    n: 1024
+    generative: true
+    sample_kwargs:
+      sample_mode: diagonal
+      delta: 0.2
+models:
+  - name: MLP
+    display_name: MLP
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+  - name: MLP01cc
+    display_name: MLP compositional contrast λ=0.1
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.1
+          p: 2
+  - name: MLP01ccn
+    display_name: MLP compositional contrast λ=0.1 normalized
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.1
+          p: 2
+          normalize: True

@@ -55,6 +55,7 @@ def train_epoch(model: nn.Module, loader: torch.utils.data.DataLoader, optimizer
 
     for batch, data in enumerate(loader, 0):
         x, z = data
+        x = x.detach()
 
         optimizer.zero_grad()
 
