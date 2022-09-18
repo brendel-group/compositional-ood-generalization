@@ -1,20 +1,28 @@
-name: testing_new_cc
+name: gs__reg_weights
 generators:
   # - name: k4l2m10
   #   k: 4
   #   l: 2
   #   m: 10
-  - name: k8l2m10
+  # - name: k8l2m10
+  #   k: 8
+  #   l: 2
+  #   m: 10
+  # - name: k4l4m10
+  #   k: 4
+  #   l: 4
+  #   m: 10
+  # - name: k12l2m10
+  #   k: 12
+  #   l: 2
+  #   m: 10
+  - name: k8l4m10
     k: 8
-    l: 2
+    l: 4
     m: 10
-  - name: k12l2m10
-    k: 12
-    l: 2
-    m: 10
-  - name: k8l3m10
+  - name: k8l8m10
     k: 8
-    l: 3
+    l: 8
     m: 10
 datasets:
   - name: diag02
@@ -56,5 +64,55 @@ models:
       regularizers:
         - function: comp_contrast
           weight: 0.1
+          p: 2
+          normalize: True
+  - name: MLP001cc
+    display_name: MLP compositional contrast λ=0.01
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.01
+          p: 2
+  - name: MLP001ccn
+    display_name: MLP compositional contrast λ=0.01 normalized
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.01
+          p: 2
+          normalize: True
+  - name: MLP0001cc
+    display_name: MLP compositional contrast λ=0.001
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.001
+          p: 2
+  - name: MLP0001ccn
+    display_name: MLP compositional contrast λ=0.001 normalized
+    model: MLP
+    train:
+      bs: 64
+      epochs: 100
+      lr: 0.1
+      lr_steps: []
+      regularizers:
+        - function: comp_contrast
+          weight: 0.001
           p: 2
           normalize: True

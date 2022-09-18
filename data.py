@@ -208,14 +208,14 @@ def build_datasets(
     train_ds = GenDataset if generative else Dataset
     train = train_ds(n, k, l, generator, sample_kwargs)
 
-    test_id = Dataset(1024, k, l, generator, sample_kwargs)
-
+    ood_sample_kwargs = dict(sample_kwargs)
     if sample_kwargs['sample_mode'] == 'diagonal':
-        sample_kwargs['sample_mode'] = 'off_diagonal'
+        ood_sample_kwargs['sample_mode'] = 'off_diagonal'
     else:
         raise NotImplementedError
-    test_ood = Dataset(1024, k, l, generator, sample_kwargs)
-    
+
+    test_id = Dataset(1024, k, l, generator, sample_kwargs)
+    test_ood = Dataset(1024, k, l, generator, ood_sample_kwargs)
     test_rand = Dataset(1024, k, l, generator, {'sample_mode': 'random'})
 
     return train, test_id, test_ood, test_rand

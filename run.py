@@ -33,22 +33,22 @@ def main(cfg):
     print('Save config...')
     save_config(cfg, f'{res_dir}/cfg.yml')
 
-    for gen_cfg in tqdm(cfg['generators'], position=0):
+    for gen_cfg in (gen_bar := tqdm(cfg['generators'], position=0)):
+        gen_bar.set_description('Generator')
         k = gen_cfg['k']
         l = gen_cfg['l']
         m = gen_cfg['m']
 
         generator = Generator(**gen_cfg)
 
-        for data_cfg in tqdm(cfg['datasets'], position=1, leave=False):
-            # print('Build data sets...')
+        for data_cfg in (data_bar := tqdm(cfg['datasets'], position=1, leave=False)):
+            data_bar.set_description('Dataset  ')
             n = data_cfg['n']
-            # bs = sampling['bs']
 
             datasets = build_datasets(generator, **data_cfg)
 
-            for model_cfg in tqdm(cfg['models'], position=2, leave=False):
-                # print('Build model...')
+            for model_cfg in (model_bar := tqdm(cfg['models'], position=2, leave=False)):
+                model_bar.set_description('Model    ')
                 model = model_factory(model_cfg['model'], k, l, m, **model_cfg.get('kwargs', {})).to(dev)
                 
                 checkpoint = model_cfg.get('load', None)
@@ -61,16 +61,21 @@ def main(cfg):
                 train_ldr, test_ldr_id, test_ldr_ood, test_ldr_rand = \
                     [BatchDataLoader(dataset, train_cfg.get('batch_size', 64)) for dataset in datasets]
                 
-                regularizers = [Regularizer(**reg_cfg, l=l) for reg_cfg in train_cfg['regularizers']] if 'regularizers' in model_cfg else None
+                regularizers = [Regularizer(**reg_cfg, l=l) for reg_cfg in train_cfg['regularizers']] if 'regularizers' in train_cfg else None
                 
                 lr = train_cfg['lr']
                 lr_steps = train_cfg['lr_steps']
                 optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)                
 
-                log_dict = {'n data': n, 'k': k, 'l': l, 'm': m, 'sampling': data_cfg['display_name'], 'model': model_cfg['display_name']}
+                reg_name = train_cfg['regularizers'][0]['function'] if 'regularizers' in train_cfg else None
+                reg_weight = train_cfg['regularizers'][0]['weight'] if 'regularizers' in train_cfg else None
+                log_dict = {'k': k, 'l': l, 'm': m,
+                    'sampling': data_cfg['display_name'], 'n data': n, 'sample mode': data_cfg['sample_kwargs']['sample_mode'], 'sample mode': data_cfg['sample_kwargs'].get('delta', None),
+                    'model': model_cfg['display_name'], 'batch size': train_cfg['bs'], 'learning rate': train_cfg['lr'], 'regularizer': reg_name, 'regularizer weight': reg_weight}
 
                 # print('Train model...')
-                for epoch in tqdm(range(train_cfg['epochs']), position=3, leave=False):
+                for epoch in (epoch_bar := tqdm(range(train_cfg['epochs']), position=3, leave=False)):
+                    epoch_bar.set_description('Epoch    ')
                     if epoch in lr_steps:
                         lr /= 3
                         for g in optimizer.param_groups:
@@ -114,10 +119,10 @@ def main(cfg):
                     # res.append({'n data': n, 'n samples': (epoch+1)*ns, 'k': setting['k'], 'l': setting['l'], 'm': setting['m'], 'sampling': sampling['name'], 'model': model['name'], 'metric': 'sparse Hessian L2', 'domain': 'OOD', 'val': hes2_ood})
                 
                 save_path = f"{res_dir}/{gen_cfg['name']}_{data_cfg['name']}_{model_cfg['name']}.pth"
-                print(f'Save model {save_path} ...')
+                tqdm.write(f'Save model {save_path} ...')
                 torch.save(model.state_dict(), save_path)
 
-                print('Save results...')
+                tqdm.write('Save results...')
                 res_df = pd.DataFrame.from_dict(res)
                 with open(f'{res_dir}/df.pkl', 'wb') as f:
                     pk.dump(res_df, f)

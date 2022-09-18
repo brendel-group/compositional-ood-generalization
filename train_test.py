@@ -14,7 +14,13 @@ dev = torch.device(dev)
 
 class Regularizer:
     def __init__(self, function: torch.nn.Module, weight: float=1, **kwargs):
-        self.function = function
+        if isinstance(function, str):
+            try:
+                self.function = globals()[function]
+            except KeyError:
+                print(f'Unknown regularizer function `{function}`')
+        else:
+            self.function = function
         self.weight = weight
         self.kwargs = kwargs
 
@@ -33,11 +39,13 @@ def comp_contrast(func: torch.nn.Module, inputs: torch.Tensor, l: int, normalize
 
     jac = functorch.vmap(functorch.jacrev(func))(inputs).transpose(1, 2)  # batch_size × obs_dim × n_slots*slot_dim
 
-    if normalize:
-        jac /= jac.square().sum(-1, keepdim=True)
+    # if normalize:
+    #     jac = jac / jac.square().sum(-1, keepdim=True)
 
     slot_rows = torch.stack(torch.split(jac, l, dim=-1))  # n_slots × batch_size × obs_dim × slot_dim
     slot_norms = torch.norm(slot_rows, p=p, dim=-1)  # n_slots × batch_size × obs_dim
+    if normalize:
+        slot_norms = slot_norms / slot_norms.abs().sum(0, keepdim=True)
     cc = (slot_norms.sum(0).square() - slot_norms.square().sum(0)).sum(-1).mean()
     return cc
 

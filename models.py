@@ -44,5 +44,5 @@ class Autoencoder(nn.Module):
         return self.g(z), z
 
 
-def factory(name, *args, **kwargs):
+def factory(name: str, *args, **kwargs):
     return globals()[name](*args, **kwargs)
