@@ -85,8 +85,8 @@ def main(cfg):
                     loss = train_epoch(model, train_ldr, optimizer, regularizers=regularizers)
 
                     # test
-                    jac_id = test(model, test_ldr_id, comp_contrast, l=l)
-                    jac_ood = test(model, test_ldr_ood, comp_contrast, l=l)
+                    cc_id = test(model, test_ldr_id, comp_contrast, l=l)
+                    cc_ood = test(model, test_ldr_ood, comp_contrast, l=l)
                     # hes2_id = test(mdl, id_ldr, sparse_hess, p=2)
                     # hes2_ood = test(mdl, ood_ldr, sparse_hess, p=2)
                     r2_id = test(model, test_ldr_id)
@@ -100,10 +100,10 @@ def main(cfg):
                     res.append(_res)
 
                     _res = dict(log_dict)
-                    _res.update({'metric': 'compositional contrast', 'domain': 'ID', 'val': jac_id})
+                    _res.update({'metric': 'compositional contrast', 'domain': 'ID', 'val': cc_id})
                     res.append(_res)
                     _res = dict(log_dict)
-                    _res.update({'metric': 'compositional contrast', 'domain': 'OOD', 'val': jac_ood})
+                    _res.update({'metric': 'compositional contrast', 'domain': 'OOD', 'val': cc_ood})
                     res.append(_res)
 
                     _res = dict(log_dict)

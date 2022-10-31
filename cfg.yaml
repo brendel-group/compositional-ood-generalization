@@ -1,4 +1,4 @@
-name: gs__reg_weights
+name: gs__gen_complexity
 generators:
   # - name: k4l2m10
   #   k: 4

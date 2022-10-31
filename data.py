@@ -28,19 +28,28 @@ def init_min_cond(model: nn.Module, n_trials: int=7500) -> torch.Tensor:
 class Generator(nn.Module):
     """Generator mapping from `k`×`l`-dimensional latents to a `k`×`m` dimensional output.
     """
-    def __init__(self, k: int, l: int, m: int, D: int=50, nonlin=nn.LeakyReLU(.2), **kwargs):
+    def __init__(self, k: int, l: int, m: int, D: int=50, nonlin=nn.LeakyReLU(.2), n_layers: int=2, **kwargs):
         super().__init__()
         self.k = k
         self.l = l
-        self.gis = nn.ModuleList([self.build_gi(l, m, D, nonlin) for _ in range(k)])
+        self.gis = nn.ModuleList([self.build_gi(l, m, D, nonlin, n_layers) for _ in range(k)])
     
-    def build_gi(self, l, m, D, nonlin):
-        """Build sub generator g_i mapping from `l` to `m`."""
+    def build_gi(self, l, m, D, nonlin, n_layers):
+        """Build sub generator g_i mapping from `l` to `m`.
+        """
+        assert n_layers >= 2
+
         g = nn.Sequential(
             nn.Linear(l, D),
-            nonlin,
-            nn.Linear(D, m)
+            nonlin
         )
+
+        for _ in range(n_layers - 2):
+            g.append(nn.Linear(D, D))
+            g.append(nonlin)
+        
+        g.append(nn.Linear(D, m))
+
         g.apply(init_min_cond)
         return g
     
