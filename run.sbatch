@@ -22,4 +22,4 @@ nvidia-smi
 srun singularity exec --nv \
     --bind /mnt/qb/work/bethge/$USER \
     docker://pytorch/pytorch \
-    bash -c "cd /mnt/qb/work/bethge/twiedemer43/code/identify_ood; ~/.conda/envs/iood/bin/python3.9 train.py"
+    bash -c "cd /mnt/qb/work/bethge/twiedemer43/code/identify_ood; ~/.conda/envs/iood/bin/python3.9 run.py"
