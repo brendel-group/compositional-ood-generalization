@@ -3,14 +3,16 @@ import torch.nn as nn
 
 
 class MLP(nn.Sequential):
-    def __init__(self, k: int, l: int, m: int, D: int=120, nonlin: nn.Module=nn.Tanh()):
+    def __init__(
+        self, k: int, l: int, m: int, D: int = 120, nonlin: nn.Module = nn.Tanh()
+    ):
         super().__init__(
             nn.Linear(k * m, D),
             nonlin,
             nn.Linear(D, k * l),
             # TODO do I need a second nonlinearity here?
             #  added it for now for compatability with legacy code
-            nonlin
+            nonlin,
         )
 
 
@@ -22,23 +24,31 @@ class MLP(nn.Sequential):
 #     def __init__(self, *args, **kwargs):
 #         super().__init__(*args, **kwargs.update(nonlin=nn.Tanh()))
 
+
 class CompositionalMLP(nn.Module):
-    def __init__(self, k: int, l: int, m: int, D: int=120, nonlin: nn.Module=nn.Tanh()):
+    def __init__(
+        self, k: int, l: int, m: int, D: int = 120, nonlin: nn.Module = nn.Tanh()
+    ):
         super().__init__()
-        self.mlps = nn.ModuleList([MLP(k * m, l, round(D / k), nonlin) for _ in range(k)])
-    
+        self.mlps = nn.ModuleList(
+            [MLP(1, l, m, round(D / k), nonlin) for _ in range(k)]
+        )
+
     def forward(self, x):
+        if x.ndim == 1: x = x.unsqueeze(0)  # because gradtracking tensors from functorch have no batch-dimension
         x = x.reshape(x.shape[0], len(self.mlps), -1)
         zs = [mlp(x[:, i, :]) for i, mlp in enumerate(self.mlps)]
         return torch.cat(zs, dim=1)
 
 
 class Autoencoder(nn.Module):
-    def __init__(self, k: int, l: int, m: int, D: int=120, nonlin: nn.Module=nn.Tanh()):
+    def __init__(
+        self, k: int, l: int, m: int, D: int = 120, nonlin: nn.Module = nn.Tanh()
+    ):
         super().__init__()
         self.f = MLP(k * m, k * l, D, nonlin)
         self.g = MLP(k * l, k * m, D, nonlin)
-    
+
     def forward(self, x):
         z = self.f(x)
         return self.g(z), z
