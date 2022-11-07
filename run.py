@@ -59,7 +59,7 @@ def main(cfg):
                 train_cfg = model_cfg['train']
 
                 train_ldr, test_ldr_id, test_ldr_ood, test_ldr_rand = \
-                    [BatchDataLoader(dataset, train_cfg.get('batch_size', 64)) for dataset in datasets]
+                    [BatchDataLoader(dataset, train_cfg.get('bs', 64)) for dataset in datasets]
                 
                 regularizers = [Regularizer(**reg_cfg, l=l) for reg_cfg in train_cfg['regularizers']] if 'regularizers' in train_cfg else None
                 
