@@ -2,7 +2,7 @@ import argparse
 import pickle as pk
 import re
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -22,20 +22,29 @@ def _load_dfs(paths: List[Union[str, Path]]):
     return pd.concat(dfs, ignore_index=True)
 
 
-def r2_v_nsamples(df: pd.DataFrame, xscale: str = "log", list_max: bool = False):
+def r2_v_nsamples(
+    df: pd.DataFrame,
+    slices: Optional[List[callable]] = None,
+    xscale: str = "log",
+    list_max: bool = False,
+):
     sb.set_style("whitegrid")
-    data = df.loc[
-        (
-            df["model"].isin(
-                ["MLP", "MLP compositional contrast λ=0.001 normalized", "Oracle"]
-            )
-        )
-        & (df["metric"] == "test R²")
-        & (df["l"] == 8)
-    ]
+    if slices is not None:
+        for slice in slices:
+            df = slice(df)
+    # df = df.loc[
+    #     (
+    #         df["model"].isin(
+    #             ["MLP", "MLP compositional contrast λ=0.001 normalized", "Oracle"]
+    #         )
+    #     )
+    #     & (df["metric"] == "test R²")
+    #     & (df["l"] == 8)
+    # ]
+    df = df.loc[df["metric"] == "test R²"]
 
     fg = sb.relplot(
-        data=data, x="n samples", y="val", hue="model", col="domain", kind="line"
+        data=df, x="n samples", y="val", hue="model", col="domain", kind="line"
     )
 
     fg.set(xscale=xscale)
@@ -66,7 +75,7 @@ def _save_fig(out_file: Union[str, Path]):
 
 
 # TODO return a list of functions that can be used on a dataframe
-def _slice_type(arg_str: str):
+def _slice(arg_str: str):
     """
     model=[MLP;MLP_compositional_contrast_λ=0.001_normalized;Oracle]
     metric=test_R²
@@ -111,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-s",
         "--df-slices",
-        type=_slice_type,
+        type=_slice,
         nargs="+",
         help="column-value pairs to slice the dataframe before plotting",
     )
@@ -119,6 +128,7 @@ if __name__ == "__main__":
         "-p",
         "--plot-kwargs",
         nargs="+",
+        default={},
         action=StoreKwargsActions,
         help="key-value pairs for plotting, given as `key=value`",
     )
