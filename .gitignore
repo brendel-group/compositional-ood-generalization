@@ -3,3 +3,4 @@
 __pycache__/
 nohup.out
 res/_*
+cfg_*.yml
