@@ -1,0 +1,114 @@
+datasets:
+- display_name: "diagonal \u22060.2"
+  generative: true
+  n: 1024
+  name: diag02
+  sample_kwargs:
+    delta: 0.2
+    sample_mode: diagonal
+generators:
+- k: 8
+  l: 8
+  m: 10
+  name: k8l8m10
+models:
+- display_name: "permuted compositional MLP (10 steps, \u03C4=1e-2)"
+  kwargs:
+    sinkhorn_steps: 10
+    sinkhorn_temp: 1e-2
+  model: PermutableCompositionalMLP
+  name: PCMLPs10t001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (20 steps, \u03C4=1e-2)"
+  kwargs:
+    sinkhorn_steps: 20
+    sinkhorn_temp: 1e-2
+  model: PermutableCompositionalMLP
+  name: PCMLPs20t001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (30 steps, \u03C4=1e-2)"
+  kwargs:
+    sinkhorn_steps: 30
+    sinkhorn_temp: 1e-2
+  model: PermutableCompositionalMLP
+  name: PCMLPs30t001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (10 steps, \u03C4=1e-3)"
+  kwargs:
+    sinkhorn_steps: 10
+    sinkhorn_temp: 1e-3
+  model: PermutableCompositionalMLP
+  name: PCMLPs10t0001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (20 steps, \u03C4=1e-3)"
+  kwargs:
+    sinkhorn_steps: 20
+    sinkhorn_temp: 1e-3
+  model: PermutableCompositionalMLP
+  name: PCMLPs20t0001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (30 steps, \u03C4=1e-3)"
+  kwargs:
+    sinkhorn_steps: 30
+    sinkhorn_temp: 1e-3
+  model: PermutableCompositionalMLP
+  name: PCMLPs30t0001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (10 steps, \u03C4=1e-4)"
+  kwargs:
+    sinkhorn_steps: 10
+    sinkhorn_temp: 1e-4
+  model: PermutableCompositionalMLP
+  name: PCMLPs10t00001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (20 steps, \u03C4=1e-4)"
+  kwargs:
+    sinkhorn_steps: 20
+    sinkhorn_temp: 1e-4
+  model: PermutableCompositionalMLP
+  name: PCMLPs20t00001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+- display_name: "permuted compositional MLP (30 steps, \u03C4=1e-4)"
+  kwargs:
+    sinkhorn_steps: 30
+    sinkhorn_temp: 1e-4
+  model: PermutableCompositionalMLP
+  name: PCMLPs30t00001
+  train:
+    bs: 64
+    epochs: 10000
+    lr: 0.1
+    lr_steps: []
+name: sinkhorn_gs
