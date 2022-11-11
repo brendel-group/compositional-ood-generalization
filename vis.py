@@ -11,7 +11,7 @@ import seaborn as sb
 from utils import StoreKwargsActions
 
 
-def _load_dfs(paths: List[Union[str, Path]]):
+def _load_dfs(paths: List[Union[str, Path]], slices: Optional[List[callable]] = None):
     dfs = []
     for path in paths:
         if not isinstance(path, Path):
@@ -19,28 +19,21 @@ def _load_dfs(paths: List[Union[str, Path]]):
         with path.open("rb") as f:
             dfs.append(pk.load(f))
 
-    return pd.concat(dfs, ignore_index=True)
+    df = pd.concat(dfs, ignore_index=True)
+    if slices is not None:
+        for slice in slices:
+            df = slice(df)
+
+    return df
 
 
 def r2_v_nsamples(
     df: pd.DataFrame,
-    slices: Optional[List[callable]] = None,
     xscale: str = "log",
     list_max: bool = False,
 ):
     sb.set_style("whitegrid")
-    if slices is not None:
-        for slice in slices:
-            df = slice(df)
-    # df = df.loc[
-    #     (
-    #         df["model"].isin(
-    #             ["MLP", "MLP compositional contrast λ=0.001 normalized", "Oracle"]
-    #         )
-    #     )
-    #     & (df["metric"] == "test R²")
-    #     & (df["l"] == 8)
-    # ]
+
     df = df.loc[df["metric"] == "test R²"]
 
     fg = sb.relplot(
@@ -76,14 +69,20 @@ def _save_fig(out_file: Union[str, Path]):
 
 def _slice(arg_str: str):
     """
-    model=[MLP;MLP_compositional_contrast_λ=0.001_normalized;Oracle]
-    metric=test_R²
-    l=8
+    Interpret key-operator-value strings as slicing functions for a pandas DataFrame.
 
-    1. split on the first instance of = < > !
-    2. extract column name
-    3. extract value as list or string
-    4. convert comparison type to correct function
+    E.g. `metric=test_R²` will be interpreted as `df.loc[df['metric'] == 'test R²']`.
+
+    In general, everything before an operator (:, =, :=, ==, !, !=, <, >, <=, >=) will
+    be interpreted as the column name to slice; everything after will be interpreted
+    as the value(s) to compare. Spaces can be replaced by `_` in the argument string
+    and will be replaced.
+
+    :, =, :=, == are all aliases for a `==` operation; !, != are aliases for `!=`.
+
+    A list of values can be provided as `col_name=[value_1; value_2; ...]`, in which case
+    the equal and not operators will use the `pandas.Series.isin()` function for
+    comparison.
     """
     equal_ops = [":", "=", "==", ":="]
     not_ops = ["!", "!="]
@@ -92,6 +91,9 @@ def _slice(arg_str: str):
         col_name, operator, value = re.search(
             r"([a-zA-Z]+)([:=!<>]{0,2})\[?([^\[\]\n]+)\]?", arg_str
         ).group(1, 2, 3)
+        # TODO would be nice to actually use commas as the value separators
+        #   in which case we would have to be able to escape commas in the
+        #   value names
         value = value.replace("_", " ").split(";")
 
         if len(value) == 1:
@@ -118,10 +120,10 @@ def _slice(arg_str: str):
             if operator in equal_ops:
                 return lambda x: x.loc[x[col_name].isin(value)]
             elif operator == not_ops:
-                return lambda x: x.loc[x[col_name].notin(value)]
+                return lambda x: x.loc[~x[col_name].isin(value)]
             elif operator in ["<", ">", "<=", ">="]:
                 raise argparse.ArgumentTypeError(
-                    "Can't do list comprehension with < > operators."
+                    "Can't compare against a list of values with < > operators."
                 )
             else:
                 raise argparse.ArgumentTypeError(
@@ -132,6 +134,10 @@ def _slice(arg_str: str):
         raise argparse.ArgumentTypeError(
             f"Can't interpret {arg_str} as dataframe slice"
         )
+
+
+# TODO add a argparse type to interpret renaming commands and implement
+#   renaming functionality in the load_df() function.
 
 
 if __name__ == "__main__":
@@ -168,10 +174,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("Loading data...")
-    df = _load_dfs(args.df_paths)
+    df = _load_dfs(args.df_paths, args.df_slices)
 
     print("Visualizing...")
-    visualizations[args.type](df, args.df_slices, **args.plot_kwargs)
+    visualizations[args.type](df, **args.plot_kwargs)
 
     print(f"Saving as {args.out} ...")
     _save_fig(args.out)
