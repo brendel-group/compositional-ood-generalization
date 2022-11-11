@@ -74,7 +74,6 @@ def _save_fig(out_file: Union[str, Path]):
         plt.savefig(out_file, bbox_inches="tight")
 
 
-# TODO return a list of functions that can be used on a dataframe
 def _slice(arg_str: str):
     """
     model=[MLP;MLP_compositional_contrast_λ=0.001_normalized;Oracle]
@@ -86,15 +85,48 @@ def _slice(arg_str: str):
     3. extract value as list or string
     4. convert comparison type to correct function
     """
+    equal_ops = [":", "=", "==", ":="]
+    not_ops = ["!", "!="]
+
     try:
         col_name, operator, value = re.search(
-            r"([a-zA-Z]+)([=!<>])\[?([^\[\]\n]+)\]?", arg_str
-        )[1:]
+            r"([a-zA-Z]+)([:=!<>]{0,2})\[?([^\[\]\n]+)\]?", arg_str
+        ).group(1, 2, 3)
         value = value.replace("_", " ").split(";")
-        if len(value) == 1:
-            value = value[0]
 
-        assert not (operator in ["<", ">"] and isinstance(value, list))
+        if len(value) == 1:
+            # normal comparisons
+            value = value[0]
+            if operator in equal_ops:
+                return lambda x: x.loc[x[col_name] == value]
+            elif operator == not_ops:
+                return lambda x: x.loc[x[col_name] != value]
+            elif operator == "<":
+                return lambda x: x.loc[x[col_name] < value]
+            elif operator == ">":
+                return lambda x: x.loc[x[col_name] > value]
+            elif operator == "<=":
+                return lambda x: x.loc[x[col_name] <= value]
+            elif operator == ">=":
+                return lambda x: x.loc[x[col_name] >= value]
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Unable to interpret operator {operator} in {arg_str}"
+                )
+        else:
+            # list comparisons
+            if operator in equal_ops:
+                return lambda x: x.loc[x[col_name].isin(value)]
+            elif operator == not_ops:
+                return lambda x: x.loc[x[col_name].notin(value)]
+            elif operator in ["<", ">", "<=", ">="]:
+                raise argparse.ArgumentTypeError(
+                    "Can't do list comprehension with < > operators."
+                )
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Unable to interpret operator {operator} in {arg_str}"
+                )
 
     except:
         raise argparse.ArgumentTypeError(
@@ -139,7 +171,7 @@ if __name__ == "__main__":
     df = _load_dfs(args.df_paths)
 
     print("Visualizing...")
-    visualizations[args.type](df, **args.plot_kwargs)
+    visualizations[args.type](df, args.df_slices, **args.plot_kwargs)
 
     print(f"Saving as {args.out} ...")
     _save_fig(args.out)
