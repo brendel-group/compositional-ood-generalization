@@ -18,8 +18,11 @@ scontrol show job=$SLURM_JOB_ID
 echo $SLURM_JOB_ID
 nvidia-smi
 
+# parse args
+config=`! [[ -z ${1} ]] && echo "-c ${1}"`
+
 # build and run the singularity container
 srun singularity exec --nv \
     --bind /mnt/qb/work/bethge/$USER \
     docker://pytorch/pytorch \
-    bash -c "cd /mnt/qb/work/bethge/twiedemer43/code/iood; ~/.conda/envs/iood/bin/python3.9 run.py -c $1"
+    bash -c "cd /mnt/qb/work/bethge/twiedemer43/code/iood; ~/.conda/envs/iood/bin/python3.9 run.py ${config}"
