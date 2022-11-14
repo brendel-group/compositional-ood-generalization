@@ -141,12 +141,18 @@ def _slice(arg_str: str):
 
 
 if __name__ == "__main__":
+    # TODO this is bad as it also includes imports
+    #   the better thing to do would probable be defining a global `visualizations` dict
+    #   and adding functions to it with a custom @visualization decorator
     visualizations = {k: v for k, v in globals().items() if not k.startswith("_")}
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "type", type=str, help=f"type of visualization, one of {visualizations}"
+        "type",
+        type=str,
+        choices=visualizations,
+        help=f"type of visualization, one of {visualizations}",
     )
     parser.add_argument("out", type=Path, help="output file")
     parser.add_argument(
