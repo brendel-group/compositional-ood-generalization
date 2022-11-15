@@ -1,0 +1,35 @@
+datasets:
+- display_name: "diagonal \u22060.2"
+  generative: true
+  n: 1024
+  name: diag02
+  sample_kwargs:
+    delta: 0.2
+    sample_mode: diagonal
+generators:
+- k: 8
+  l: 8
+  m: 10
+  name: k8l8m10
+models:
+- display_name: Oracle
+  kwargs:
+    D: 400
+  model: CompositionalMLP
+  name: oracle
+  train:
+    bs: 64
+    epochs: 100000
+    lr: 0.1
+    lr_steps: []
+- display_name: MLP
+  kwargs:
+    D: 400
+  model: MLP
+  name: MLP
+  train:
+    bs: 64
+    epochs: 100000
+    lr: 0.1
+    lr_steps: []
+name: mlp-v-oracle_fixed-D
