@@ -12,19 +12,7 @@ class MLP(nn.Sequential):
             nn.Linear(k * m, D),
             nonlin,
             nn.Linear(D, k * l),
-            # TODO do I need a second nonlinearity here?
-            #  added it for now for compatability with legacy code
-            nonlin,
         )
-
-
-# def MLPTanh(*args, **kwargs):
-#     return MLP(*args, **kwargs.update(nonlin=nn.Tanh()))
-
-
-# class MLPTanh(MLP):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs.update(nonlin=nn.Tanh()))
 
 
 class CompositionalMLP(nn.Module):
@@ -38,9 +26,8 @@ class CompositionalMLP(nn.Module):
 
     def forward(self, x):
         if x.ndim == 1:
-            x = x.unsqueeze(
-                0
-            )  # because gradtracking tensors from functorch have no batch-dimension
+            # because gradtracking tensors from functorch have no batch-dimension
+            x = x.unsqueeze(0)
         x = x.reshape(x.shape[0], len(self.mlps), -1)
         zs = [mlp(x[:, i, :]) for i, mlp in enumerate(self.mlps)]
         return torch.cat(zs, dim=1)
