@@ -6,8 +6,14 @@ from utils import get_digit_subscript
 
 
 def sample_latents(
-    n_samples: int, dim_per_slot: List[int], mode: str, **kwargs
+    dim_per_slot: List[int], mode: str, n_samples: int = None, **kwargs
 ) -> torch.Tensor:
+    if mode not in [
+        "full_grid",
+        "face_grid",
+    ]:
+        assert n_samples is not None, "Number of samples must be specified."
+
     if mode == "random":
         z = _sample_random(n_samples, dim_per_slot)
     elif mode == "orthogonal":
@@ -71,6 +77,8 @@ def _get_face_grids(
 
     # if a specific face is specified only return those points
     if dims is not None:
+        assert dims[0] != dims[1], "Dimensions can't be the same."
+
         z = torch.zeros(n_gridpoints, total_dim)
         z[:, dims[0]] = torch.arange(grid_size).repeat(grid_size)
         z[:, dims[1]] = torch.arange(grid_size).repeat_interleave(grid_size)

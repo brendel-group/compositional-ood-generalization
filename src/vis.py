@@ -7,6 +7,7 @@ import pandas as pd
 import seaborn as sb
 import torch
 
+from data import sample_latents
 from utils import get_digit_subscript
 
 
@@ -97,3 +98,33 @@ def visualize_slots_and_output(
     )
 
     plt.show()
+
+
+def visualize_output_grid(
+    comp_func,
+    grid_size: int = 5,
+    dims: Tuple[int, int] = None,
+    plot_size: float = 3,
+    title: str = "",
+    out: Path = None,
+):
+    D = comp_func.d_in
+    z = sample_latents(D, "face_grid", grid_size=grid_size, dims=dims)
+    x = comp_func(z).detach()
+
+    if dims is not None:
+        fig = plt.figure(figsize=(grid_size * plot_size, grid_size * plot_size))
+        fig.suptitle(title)
+
+        vmin = min(x.min(), -x.max())
+        vmax = max(x.max(), -x.min())
+
+        for i, _x in enumerate(x):
+            ax = fig.add_subplot(grid_size, grid_size, i + 1)
+            ax.imshow(_rectify(_x), cmap="RdBu", vmin=vmin, vmax=vmax)
+            ax.axis("off")
+
+        plt.show()
+
+    else:
+        raise NotImplementedError()
