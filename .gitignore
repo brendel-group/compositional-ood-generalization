@@ -1,7 +1,7 @@
 _*
 .conda_config
+.vscode
 *.pth
 __pycache__/
-nohup.out
 res/_*
 cfg_*.yml
