@@ -7,16 +7,12 @@ from typing import Dict, List
 import numpy as np
 import torch
 import torch.nn as nn
-from torchmetrics import Metric, R2Score
+from torchmetrics import MeanSquaredError, Metric, R2Score
 
 import wandb
 from data import BatchDataLoader, Dataset, InfiniteDataset, get_dataloaders
-from models import (
-    CompositionalFunction,
-    InvertibleMLP,
-    LinearComposition,
-    ParallelSlots,
-)
+from models import (CompositionalFunction, InvertibleMLP, LinearComposition,
+                    ParallelSlots)
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -32,6 +28,8 @@ def _get_metric_dict(metric_names: List[str], d_out: int) -> Dict[str, callable]
             metrics[name] = R2Score(
                 num_outputs=d_out, multioutput="uniform_average"
             ).to(dev)
+        elif name =="MSE":
+            metrics[name] = MeanSquaredError().to(dev)
         else:
             raise ValueError(f"Unknown metric {name}.")
     return metrics
