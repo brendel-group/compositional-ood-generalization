@@ -1,0 +1,38 @@
+save_name: ADD_rand
+save_dir: /mnt/c/Users/thadd/code/cood/_checkpoints
+seed: 0
+data:
+  D: [2, 2]
+  M: [16, 16]
+  phi: InvertibleMLP # not used atm
+  C: LinearComposition # not used atm
+model:
+  phi: InvertibleMLP # not used atm
+train:
+  epochs: 1000
+  # log_freq: 10 # not used atm
+  sample:
+    mode: random
+    n_samples: 10000
+  batch_size: 64
+  lr: 0.001
+  scheduler: CosineAnnealingLR
+  scheduler_kwargs:
+    T_max: 1000
+    eta_min: 1e-5
+  optimizer: AdamW
+  optimizer_kwargs: {}
+  weight_decay: 1e-5
+wandb:
+  watch: False
+  watch_freq: 50
+eval:
+  freq: 100
+  sample:
+    mode: random
+    n_samples: 10000
+  batch_size: 512
+  metrics:
+    - R2Score
+  save_scores: []
+
