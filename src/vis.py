@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sb
 import torch
@@ -21,14 +22,18 @@ def _rectify(t: torch.Tensor) -> torch.Tensor:
             return t.view(w, area // w)
 
 
-def visualize_latents(latents: torch.Tensor, dim_per_slot: List[int], out: Path = None):
+def visualize_latents(
+    latents: torch.Tensor, dim_per_slot: List[int], grid_size: int, out: Path = None
+):
     cols = [
         f"z{get_digit_subscript(i+1)}{get_digit_subscript(j+1)}"
         for i, d in enumerate(dim_per_slot)
         for j in range(d)
     ]
     df = pd.DataFrame(latents.numpy(), columns=cols)
-    sb.pairplot(df, corner=True)
+
+    bins = (np.arange(grid_size + 1) - 0.5) / (grid_size - 1)
+    sb.pairplot(df, corner=True, diag_kws=dict(bins=bins))
 
 
 def visualize_slots_and_output(

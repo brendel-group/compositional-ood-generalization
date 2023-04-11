@@ -107,7 +107,7 @@ def _sample_grid(
 ) -> torch.Tensor:
     """Sample on the grid in the unit cube"""
     z = torch.rand(n_samples, sum(dim_per_slot))
-    z = (z * (grid_size + 1) - 0.5).round() / grid_size
+    z = (z * grid_size - 0.5).round() / (grid_size - 1)
     return z
 
 
@@ -169,5 +169,5 @@ def get_dataloaders(
         eval_ldr = BatchDataLoader(eval_set, eval_cfg["batch_size"])
 
         eval_ldrs[eval_set_cfg["name"]] = eval_ldr
-    
+
     return train_ldr, eval_ldrs
