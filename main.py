@@ -20,6 +20,8 @@ if __name__ == "__main__":
     # first load config
     cfg = load_config(args.config)
 
+    # TODO supply defaults from defautl.yml
+
     # then overwrite with CLI arguments
     cfg.update(**vars(args))
 

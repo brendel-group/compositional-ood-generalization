@@ -1,4 +1,4 @@
-save_name: ADD_rand
+save_name: COOD
 save_dir: /mnt/qb/work/bethge/twiedemer43/code/cood/_checkpoints
 seed: 0
 data:
@@ -11,11 +11,11 @@ model:
   kwargs:
     d_hidden: 10
 train:
-  epochs: 100000
+  epochs: 1000
   sample:
-    mode: random
+    mode: orthogonal
     n_samples: 10000
-  batch_size: 512
+  batch_size: 64
   lr: 0.001
   scheduler: CosineAnnealingLR
   scheduler_kwargs:
