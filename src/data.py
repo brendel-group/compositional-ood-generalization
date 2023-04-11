@@ -116,7 +116,8 @@ class Dataset(torch.utils.data.TensorDataset):
 
     def __init__(self, generator: CompositionalFunction, **kwargs):
         z = sample_latents(generator.d_in, **kwargs)
-        x = generator(z).detach()
+        with torch.no_grad():
+            x = generator(z)
         super().__init__(x, z)
 
 
@@ -139,7 +140,8 @@ class InfiniteDataset(torch.utils.data.IterableDataset):
 
     def reset(self):
         self.z = sample_latents(self.generator.d_in, **self.kwargs)
-        self.x = self.generator(self.z).detach()
+        with torch.no_grad():
+            self.x = self.generator(self.z)
 
 
 class BatchDataLoader(torch.utils.data.DataLoader):
@@ -156,7 +158,7 @@ def get_dataloaders(
     train_cfg: Dict[str, Any],
     eval_cfg: Dict[str, Any],
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
-    # TODO assert that generator is in eval mode
+    assert not generator.training, "Generator has to be in eval() mode!"
 
     train_set = InfiniteDataset(generator, **train_cfg["sample"])
     train_ldr = BatchDataLoader(train_set, train_cfg["batch_size"])
