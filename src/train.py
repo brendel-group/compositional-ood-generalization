@@ -124,11 +124,14 @@ def run(**cfg):
     f = CompositionalFunction(C, phi)
 
     # TODO check whether we need more workers or better background prefetching
-    
+
     train_ldr, eval_ldrs = get_dataloaders(f, cfg["train"], cfg["eval"])
 
     phi_hat = ParallelSlots(
-        [InvertibleMLP(d_in, d_out, d_hidden=10) for d_in, d_out in zip(D, M)]
+        [
+            InvertibleMLP(d_in, d_out, **cfg["model"]["kwargs"])
+            for d_in, d_out in zip(D, M)
+        ]
     )
     f_hat = CompositionalFunction(C, phi_hat)
     f_hat.to(dev)
