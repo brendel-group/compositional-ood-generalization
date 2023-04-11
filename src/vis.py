@@ -8,6 +8,7 @@ import seaborn as sb
 import torch
 
 from data import sample_latents
+from models import CompositionalFunction
 from utils import get_digit_subscript
 
 
@@ -101,7 +102,7 @@ def visualize_slots_and_output(
 
 
 def visualize_output_grid(
-    comp_func,
+    comp_func: CompositionalFunction,
     grid_size: int = 5,
     dims: Tuple[int, int] = None,
     plot_size: float = 3,
