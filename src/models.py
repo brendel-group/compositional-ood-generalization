@@ -82,6 +82,9 @@ class LinearComposition(nn.Module):
         x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
         return torch.sum(x, dim=1)
 
+    def get_d_out(self, slot_d_out: List[int]) -> int:
+        return slot_d_out[0]
+
 
 class CompositionalFunction(nn.Module):
     """Wrapper for combination function and slot functions"""
@@ -92,6 +95,7 @@ class CompositionalFunction(nn.Module):
         self.slots = slots
         self.d_in = slots.d_in
         self.d_hidden = slots.d_out
+        self.d_out = composition.get_d_out(self.d_hidden)
 
     def forward(self, x, return_slot_outputs=False):
         _x = self.slots(x)

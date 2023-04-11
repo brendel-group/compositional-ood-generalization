@@ -1,6 +1,7 @@
 _*
 .conda_config
 .vscode
+wandb
 *.pth
 __pycache__/
 res/_*

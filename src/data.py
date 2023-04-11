@@ -1,12 +1,14 @@
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
+import torch.nn as nn
 
+from models import CompositionalFunction
 from utils import get_digit_subscript
 
 
 def sample_latents(
-    dim_per_slot: List[int], mode: str, n_samples: int = None, **kwargs
+    dim_per_slot: List[int], mode: str = "random", n_samples: int = None, **kwargs
 ) -> torch.Tensor:
     if mode not in [
         "full_grid",
@@ -107,3 +109,65 @@ def _sample_grid(
     z = torch.rand(n_samples, sum(dim_per_slot))
     z = (z * (grid_size + 1) - 0.5).round() / grid_size
     return z
+
+
+class Dataset(torch.utils.data.TensorDataset):
+    """Simple Dataset with fixed number of samples."""
+
+    def __init__(self, generator: CompositionalFunction, **kwargs):
+        z = sample_latents(generator.d_in, **kwargs)
+        x = generator(z).detach()
+        super().__init__(x, z)
+
+
+class InfiniteDataset(torch.utils.data.IterableDataset):
+    """Dataset that draws new samples every epoch."""
+
+    def __init__(self, generator: CompositionalFunction, **kwargs):
+        super().__init__()
+        self.generator = generator
+        self.kwargs = kwargs
+
+    def __iter__(self):
+        # can't handle multiple workers atm
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            raise NotImplementedError
+
+        self.reset()
+        return iter(zip(self.x, self.z))
+
+    def reset(self):
+        self.z = sample_latents(self.generator.d_in, **self.kwargs)
+        self.x = self.generator(self.z).detach()
+
+
+class BatchDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, dataset: torch.utils.data.Dataset, batch_size: int):
+        super().__init__(
+            dataset,
+            batch_size=batch_size,
+            shuffle=None if isinstance(dataset, InfiniteDataset) else True,
+        )
+
+
+def get_dataloaders(
+    generator: nn.Module,
+    train_cfg: Dict[str, Any],
+    eval_cfg: Dict[str, Any],
+) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
+    train_set = InfiniteDataset(generator, **train_cfg["sample"])
+    train_ldr = BatchDataLoader(train_set, train_cfg["batch_size"])
+
+    eval_set_cfgs = eval_cfg["sample"]
+    if not isinstance(eval_set_cfgs, list):
+        eval_set_cfgs = [eval_set_cfgs]
+
+    eval_ldrs = {}
+    for eval_set_cfg in eval_set_cfgs:
+        eval_set = Dataset(generator, **eval_set_cfg)
+        eval_ldr = BatchDataLoader(eval_set, eval_cfg["batch_size"])
+
+        eval_ldrs[eval_set_cfg["name"]] = eval_ldr
+    
+    return train_ldr, eval_ldrs

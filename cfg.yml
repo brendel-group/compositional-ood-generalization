@@ -1,4 +1,4 @@
-save_name: ADD_rand
+save_name: ADD_ortho
 save_dir: /mnt/c/Users/thadd/code/cood/_checkpoints
 seed: 0
 data:
@@ -12,7 +12,7 @@ train:
   epochs: 1000
   # log_freq: 10 # not used atm
   sample:
-    mode: random
+    mode: orthogonal
     n_samples: 10000
   batch_size: 64
   lr: 0.001
@@ -29,9 +29,13 @@ wandb:
 eval:
   freq: 100
   sample:
-    mode: random
-    n_samples: 10000
-  batch_size: 512
+    - name: all
+      mode: random
+      n_samples: 10000
+    - name: ID
+      mode: orthogonal
+      n_samples: 10000
+  batch_size: 1000
   metrics:
     - R2Score
   save_scores: []
