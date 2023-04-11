@@ -134,3 +134,74 @@ def visualize_output_grid(
 
     else:
         raise NotImplementedError()
+
+
+def visualize_score_heatmaps(
+    latents: torch.Tensor,
+    scores: torch.Tensor,
+    dim_per_slot: List[int],
+    score_name: str = "score",
+    plot_size: float = 3,
+    title: str = "",
+    out: Path = None,
+):
+    assert latents.shape[0] == scores.shape[0], "Requires a score for each latent."
+
+    cols = [
+        f"z{get_digit_subscript(i+1)}{get_digit_subscript(j+1)}"
+        for i, d in enumerate(dim_per_slot)
+        for j in range(d)
+    ] + [score_name]
+
+    combined_data = torch.cat([latents, scores.unsqueeze(-1)], dim=1)
+
+    df = pd.DataFrame(combined_data.numpy(), columns=cols)
+
+    n_dims = sum(dim_per_slot)
+
+    fig = plt.figure(figsize=(n_dims * plot_size, n_dims * plot_size))
+    fig.suptitle(title)
+
+    # diagonal cells
+    # find y limits first
+    vmin, vmax = float("inf"), 0
+    for i in range(n_dims):
+        df_view = df.groupby(cols[i]).mean()[score_name]
+
+        if df_view.min() < vmin:
+            vmin = df_view.min()
+        if df_view.max() > vmax:
+            vmax = df_view.max()
+
+    # plot barplot of mean error along this dimension
+    for i in range(n_dims):
+        ax = fig.add_subplot(n_dims, n_dims, i * (n_dims + 1) + 1)
+        df_view = df.groupby(cols[i]).mean()[score_name]
+        sb.lineplot(df_view)
+        ax.set_ybound(vmin, vmax)
+
+    # corner cells
+    # find color range first
+    vmin, vmax = float("inf"), 0
+    for row in range(1, n_dims):
+        for col in range(row):
+            df_view = df.groupby([cols[row], cols[col]]).mean()[score_name]
+
+            if df_view.min() < vmin:
+                vmin = df_view.min()
+            if df_view.max() > vmax:
+                vmax = df_view.max()
+
+    # plot heatmap of mean error over these two dimension
+    for row in range(1, n_dims):
+        for col in range(row):
+            ax = fig.add_subplot(n_dims, n_dims, row * n_dims + col + 1)
+            df_view = df.groupby([cols[row], cols[col]]).mean()[score_name]
+            # transform into 2d data
+            df_view = df_view.reset_index().pivot(
+                columns=cols[col], index=cols[row], values=score_name
+            )
+            sb.heatmap(df_view, vmin=vmin, vmax=vmax, cmap="RdBu", cbar=False)
+
+    fig.tight_layout()
+    plt.show()
