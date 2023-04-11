@@ -11,8 +11,12 @@ from torchmetrics import MeanSquaredError, Metric, R2Score
 
 import wandb
 from data import BatchDataLoader, Dataset, InfiniteDataset, get_dataloaders
-from models import (CompositionalFunction, InvertibleMLP, LinearComposition,
-                    ParallelSlots)
+from models import (
+    CompositionalFunction,
+    InvertibleMLP,
+    LinearComposition,
+    ParallelSlots,
+)
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -28,7 +32,7 @@ def _get_metric_dict(metric_names: List[str], d_out: int) -> Dict[str, callable]
             metrics[name] = R2Score(
                 num_outputs=d_out, multioutput="uniform_average"
             ).to(dev)
-        elif name =="MSE":
+        elif name == "MSE":
             metrics[name] = MeanSquaredError().to(dev)
         else:
             raise ValueError(f"Unknown metric {name}.")
@@ -119,7 +123,8 @@ def run(**cfg):
         [InvertibleMLP(d_in, d_out, d_hidden=10) for d_in, d_out in zip(D, M)]
     )
     C = LinearComposition()
-    f = CompositionalFunction(C, phi)
+    f = CompositionalFunction(C, phi).to(dev)
+    f.eval()
 
     # TODO check whether we need more workers or better background prefetching
 

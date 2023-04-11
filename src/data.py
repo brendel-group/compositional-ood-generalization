@@ -156,6 +156,8 @@ def get_dataloaders(
     train_cfg: Dict[str, Any],
     eval_cfg: Dict[str, Any],
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
+    # TODO assert that generator is in eval mode
+
     train_set = InfiniteDataset(generator, **train_cfg["sample"])
     train_ldr = BatchDataLoader(train_set, train_cfg["batch_size"])
 
