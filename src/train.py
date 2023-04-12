@@ -101,7 +101,7 @@ def evaluate(
                 if score_name in scores:
                     scores[score_name] += metric(x, x_hat).item()
                 else:
-                    scores[score_name] = 0
+                    scores[score_name] = metric(x, x_hat).item()
 
     scores = {name: (val / (batch + 1)) for name, val in scores.items()}
     return scores
