@@ -181,14 +181,16 @@ def run(**cfg):
 
     # TODO consider using tqdm
     for epoch in range(cfg["train"]["epochs"]):
+        log = {}
+
         loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer)
-        wandb.log({"loss": loss, "compute_efficiency": compute_efficiency})
+        log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
         if epoch % cfg["eval"]["freq"] == cfg["eval"]["freq"] - 1:
             scores = evaluate(
                 f_hat, eval_ldrs, _get_metric_dict(cfg["eval"]["metrics"], f_hat.d_out)
             )
-            wandb.log(scores)
+            log.update(scores)
 
             for name, val in best_scores:
                 if scores[name] < val:
@@ -197,7 +199,10 @@ def run(**cfg):
 
             if cfg["wandb"]["make_plots"]:
                 fig = _get_mse_on_grid(f, f_hat, D)
-                wandb.log({"heatmap": wandb.Image(fig)})
+                log.update({"heatmap": wandb.Image(fig)})
+
+        # call wandb.log() only once to get the correct number of steps in the interface
+        wandb.log(log)
 
         scheduler.step()
 
