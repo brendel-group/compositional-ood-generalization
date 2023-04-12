@@ -67,6 +67,7 @@ class ParallelSlots(nn.Module):
         return self.slot_functions[item]
 
 
+# TODO write base "Composition" class
 class LinearComposition(nn.Module):
     """C for simple addition."""
 
@@ -81,6 +82,31 @@ class LinearComposition(nn.Module):
         # split outputs from each slot
         x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
         return torch.sum(x, dim=1)
+
+    def get_d_out(self, slot_d_out: List[int]) -> int:
+        return slot_d_out[0]
+
+
+class OcclusionLinearComposition(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def _add_behind(self, a: torch.Tensor, b: torch.Tensor):
+        return torch.where(a < 0, b, a)
+
+    def forward(self, x, d_hidden):
+        assert all_equal(
+            d_hidden
+        ), f"The output dimension of each slot must be identical, but got {d_hidden}"
+
+        # split outputs from each slot
+        x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
+        out = x[:, 0, :]
+        for slot in range(1, len(d_hidden)):
+            out = self._add_behind(out, x[:, slot, :])
+
+        out = torch.where(out < 0, 0, out)
+        return out
 
     def get_d_out(self, slot_d_out: List[int]) -> int:
         return slot_d_out[0]
