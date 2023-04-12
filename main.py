@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from src.train import run
-from src.utils import load_config
+from src.utils import load_config, deep_update
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -11,18 +11,21 @@ if __name__ == "__main__":
         "-c",
         "--config",
         type=Path,
-        default="cfg.yml",
+        default=None,
         help="Path to config file. CLI arguments will overwrite config settings.",
     )
 
     args = parser.parse_args()
 
-    # first load config
-    cfg = load_config(args.config)
+    # first load default config
+    cfg = load_config(Path("default.yml"))
 
-    # TODO supply defaults from defautl.yml
+    # then load config if specified
+    # NOTE this doesn't work for lists in YAML, so use with care
+    if args.config is not None:
+        cfg_update = load_config(args.config)
+        cfg = deep_update(cfg, cfg_update)
 
-    # then overwrite with CLI arguments
-    cfg.update(**vars(args))
+    # TODO add ability to update config with CLI arguments
 
     run(**cfg)

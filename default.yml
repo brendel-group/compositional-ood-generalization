@@ -8,9 +8,10 @@ data:
   phi_kwargs:
     d_hidden: 10
   C: LinearComposition
+  C_kwargs: {}
 model:
   phi: InvertibleMLP
-  kwargs:
+  phi_kwargs:
     d_hidden: 10
 train:
   epochs: 1000

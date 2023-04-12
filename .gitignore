@@ -5,4 +5,4 @@ wandb
 *.pth
 __pycache__/
 res/_*
-cfg_*.yml
+cfg*.yml
