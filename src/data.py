@@ -1,10 +1,11 @@
+from math import sqrt
 from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 
 from models import CompositionalFunction
-from utils import get_digit_subscript
+from utils import all_equal
 
 
 def sample_latents(
@@ -22,6 +23,8 @@ def sample_latents(
         z = _sample_orthogonal(n_samples, dim_per_slot)
     elif mode == "orthogonal_gap":
         z = _sample_orthogonal_with_gap(n_samples, dim_per_slot, **kwargs)
+    elif mode == "diagonal":
+        z = _sample_diagonal(n_samples, dim_per_slot, **kwargs)
     elif mode == "grid":
         z = _sample_grid(n_samples, dim_per_slot, **kwargs)
     elif mode == "full_grid":
@@ -62,6 +65,7 @@ def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
 def _sample_orthogonal_with_gap(
     n_samples: int, dim_per_slot: List[int], gaps: List[Tuple[int, float, float]]
 ) -> torch.Tensor:
+    """Sample Orthogonally with a gap along any dimension(s) specified by (dim, start, stop)."""
     total_dim = sum(dim_per_slot)
     for dim, start, stop in gaps:
         assert dim in range(
@@ -89,6 +93,58 @@ def _sample_orthogonal_with_gap(
 
         idx = mask.nonzero().squeeze(1)
         z = torch.cat([z, _z[idx]])
+
+    return z[:n_samples]
+
+
+def _sample_diagonal(
+    n_samples: int, dim_per_slot: List[int], delta: float
+) -> torch.Tensor:
+    total_dim = sum(dim_per_slot)
+    max_delta = sqrt(2) / 2
+    assert (
+        delta > 0 and delta < max_delta
+    ), f"Delta must be in [0, {max_delta}], but got {delta}."
+
+    if not all_equal(dim_per_slot):
+        raise NotImplementedError(
+            "Diagonal sampling undefined for slots with different dimensions."
+        )
+    n_slots = len(dim_per_slot)
+    dim_per_slot = dim_per_slot[0]
+
+    z = torch.Tensor(0, total_dim)
+
+    while z.shape[0] < n_samples:
+        # sample randomly on diagonal
+        z_in_slot = torch.rand(n_samples, dim_per_slot)
+        z_on_diag = z_in_slot.unsqueeze(1).repeat(1, n_slots, 1)
+
+        # sample noise from n_slots-ball
+        noise = torch.randn(n_samples, n_slots + 2, dim_per_slot)
+        noise = noise / torch.norm(noise, dim=1, keepdim=True)  # points on n-sphere
+        noise = noise[:, :n_slots, :]  # remove two last points
+
+        # project to hyperplane perpendicular to diagonal
+        # this yields a random direction orthogonal to the diagonal
+        ort_vec = noise - z_on_diag * (noise * z_on_diag).sum(
+            axis=1, keepdim=True
+        ) / z_on_diag.pow(2).sum(axis=1, keepdim=True)
+        ort_vec /= torch.norm(ort_vec, p=2, dim=1, keepdim=True)
+
+        # get the points within radius delta around the diagonal
+        _z = (
+            z_on_diag
+            + ort_vec
+            * torch.pow(torch.rand([n_samples, 1, dim_per_slot]), 1 / (n_slots - 1))
+            * delta
+        )
+
+        # only keep samples inside the unit-cube
+        mask = ((_z - 0.5).abs() <= 0.5).flatten(1).all(1)
+        idx = mask.nonzero().squeeze(1)
+
+        z = torch.cat([z, _z[idx].flatten(1)])
 
     return z[:n_samples]
 
