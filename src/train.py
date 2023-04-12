@@ -18,6 +18,7 @@ from models import (
     LinearComposition,
     ParallelSlots,
 )
+import models
 from vis import visualize_score_heatmaps
 
 if torch.cuda.is_available():
@@ -142,10 +143,13 @@ def run(**cfg):
     torch.manual_seed(cfg["seed"])
 
     D, M = cfg["data"]["D"], cfg["data"]["M"]
-    phi = ParallelSlots(
-        [InvertibleMLP(d_in, d_out, d_hidden=10) for d_in, d_out in zip(D, M)]
-    )
-    C = LinearComposition()
+
+    phi = []
+    for d_in, d_out in zip(D, M):
+        model = getattr(models, cfg["data"]["phi"])
+        phi.append(model(d_in, d_out, **cfg["data"]["phi_kwargs"]))
+    phi = ParallelSlots(phi)
+    C = getattr(models, cfg["data"]["C"])(**cfg["data"]["C_kwargs"])
     f = CompositionalFunction(C, phi).to(dev)
     f.eval()
 
@@ -153,12 +157,11 @@ def run(**cfg):
 
     train_ldr, eval_ldrs = get_dataloaders(f, cfg["train"], cfg["eval"], dev)
 
-    phi_hat = ParallelSlots(
-        [
-            InvertibleMLP(d_in, d_out, **cfg["model"]["kwargs"])
-            for d_in, d_out in zip(D, M)
-        ]
-    )
+    phi_hat = []
+    for d_in, d_out in zip(D, M):
+        model = getattr(models, cfg["model"]["phi"])
+        phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
+    phi_hat = ParallelSlots(phi_hat)
     f_hat = CompositionalFunction(C, phi_hat)
     f_hat.to(dev)
 

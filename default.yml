@@ -4,10 +4,12 @@ seed: 0
 data:
   D: [2, 2]
   M: [16, 16]
-  phi: InvertibleMLP # not used atm
-  C: LinearComposition # not used atm
+  phi: InvertibleMLP
+  phi_kwargs:
+    d_hidden: 10
+  C: LinearComposition
 model:
-  phi: InvertibleMLP # not used atm
+  phi: InvertibleMLP
   kwargs:
     d_hidden: 10
 train:
