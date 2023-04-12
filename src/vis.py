@@ -25,6 +25,8 @@ def _rectify(t: torch.Tensor) -> torch.Tensor:
 def visualize_latents(
     latents: torch.Tensor, dim_per_slot: List[int], grid_size: int, out: Path = None
 ):
+    sb.set_theme("notebook", "whitegrid", rc={"axes.grid": False})
+
     cols = [
         f"z{get_digit_subscript(i+1)}{get_digit_subscript(j+1)}"
         for i, d in enumerate(dim_per_slot)
@@ -43,6 +45,8 @@ def visualize_slots_and_output(
     title: str = "",
     out: Path = None,
 ):
+    sb.set_theme("notebook", "whitegrid")
+
     output = output.detach()
     slots = [slot.detach() for slot in slots]
 
@@ -114,6 +118,8 @@ def visualize_output_grid(
     title: str = "",
     out: Path = None,
 ):
+    sb.set_theme("notebook", "whitegrid")
+
     D = comp_func.d_in
     z = sample_latents(D, "face_grid", grid_size=grid_size, dims=dims)
     x = comp_func(z).detach()
@@ -146,6 +152,8 @@ def visualize_score_heatmaps(
     out: Path = None,
 ):
     assert latents.shape[0] == scores.shape[0], "Requires a score for each latent."
+
+    sb.set_theme("notebook", "whitegrid")
 
     cols = [
         f"z{get_digit_subscript(i+1)}{get_digit_subscript(j+1)}"
@@ -201,7 +209,16 @@ def visualize_score_heatmaps(
             df_view = df_view.reset_index().pivot(
                 columns=cols[col], index=cols[row], values=score_name
             )
-            sb.heatmap(df_view, vmin=vmin, vmax=vmax, cmap="RdBu", cbar=False)
+            sb.heatmap(df_view, vmin=vmin, vmax=vmax, cmap="mako", cbar=False)
+
+    # add colorbar for heatmaps
+    norm = plt.Normalize(vmin, vmax)
+    sm = plt.cm.ScalarMappable(cmap="mako", norm=norm)
+    sm.set_array([])
+
+    ax = fig.add_subplot(n_dims, n_dims, n_dims)
+    ax.figure.colorbar(sm)
+    ax.axis("off")
 
     fig.tight_layout()
     plt.show()
