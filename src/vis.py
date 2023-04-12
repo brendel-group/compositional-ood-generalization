@@ -150,6 +150,7 @@ def visualize_score_heatmaps(
     plot_size: float = 3,
     title: str = "",
     out: Path = None,
+    logging: bool = False,
 ):
     assert latents.shape[0] == scores.shape[0], "Requires a score for each latent."
 
@@ -221,4 +222,7 @@ def visualize_score_heatmaps(
     ax.axis("off")
 
     fig.tight_layout()
-    plt.show()
+    if logging:
+        return fig
+    else:
+        plt.show()

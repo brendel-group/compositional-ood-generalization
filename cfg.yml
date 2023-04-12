@@ -1,5 +1,5 @@
-save_name: ADD_rand
-save_dir: /mnt/qb/work/bethge/twiedemer43/code/cood/_checkpoints
+save_name: ADD_orth
+save_dir: /mnt/c/Users/thadd/code/cood/_checkpoints
 seed: 0
 data:
   D: [2, 2]
@@ -11,9 +11,9 @@ model:
   kwargs:
     d_hidden: 10
 train:
-  epochs: 100000
+  epochs: 1000
   sample:
-    mode: random
+    mode: orthogonal
     n_samples: 10000
   batch_size: 512
   lr: 0.001
@@ -27,6 +27,7 @@ train:
 wandb:
   watch: False
   watch_freq: 50
+  make_plots: True
 eval:
   freq: 100
   sample:

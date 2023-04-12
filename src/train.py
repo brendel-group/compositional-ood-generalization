@@ -7,16 +7,18 @@ from typing import Dict, List
 import numpy as np
 import torch
 import torch.nn as nn
-from torchmetrics import MeanSquaredError, Metric, R2Score
-
 import wandb
-from data import BatchDataLoader, Dataset, InfiniteDataset, get_dataloaders
+from torchmetrics import MeanSquaredError, Metric, R2Score
+import matplotlib.pyplot as plt
+
+from data import get_dataloaders, sample_latents
 from models import (
     CompositionalFunction,
     InvertibleMLP,
     LinearComposition,
     ParallelSlots,
 )
+from vis import visualize_score_heatmaps
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -91,7 +93,8 @@ def evaluate(
             x = x.to(dev)
             z = z.to(dev)
 
-            x_hat = model(z)
+            with torch.no_grad():
+                x_hat = model(z)
 
             for metric_name, metric in metrics.items():
                 score_name = f"{metric_name}_{loader_name}"
@@ -102,6 +105,25 @@ def evaluate(
 
     scores = {name: (val / (batch + 1)) for name, val in scores.items()}
     return scores
+
+
+def _get_mse_on_grid(
+    generator: nn.Module,
+    model: nn.Module,
+    dim_per_slot: List[int],
+) -> plt.Figure:
+    model.eval()
+    z = sample_latents(dim_per_slot, "grid", n_samples=10000, grid_size=11).to(dev)
+
+    with torch.no_grad():
+        x = generator(z)
+        x_hat = model(z)
+        mse = (x_hat - x).pow(2).mean(dim=-1)
+
+    fig = visualize_score_heatmaps(
+        z.to("cpu"), mse.to("cpu"), dim_per_slot, "MSE", logging=True
+    )
+    return fig
 
 
 def run(**cfg):
@@ -128,7 +150,7 @@ def run(**cfg):
 
     # TODO check whether we need more workers or better background prefetching
 
-    train_ldr, eval_ldrs = get_dataloaders(f, cfg["train"], cfg["eval"])
+    train_ldr, eval_ldrs = get_dataloaders(f, cfg["train"], cfg["eval"], dev)
 
     phi_hat = ParallelSlots(
         [
@@ -171,6 +193,10 @@ def run(**cfg):
                 if scores[name] < val:
                     scores[name] = val
                     torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
+
+            if cfg["wandb"]["make_plots"]:
+                fig = _get_mse_on_grid(f, f_hat, D)
+                wandb.log({"heatmap": wandb.Image(fig)})
 
         scheduler.step()
 
