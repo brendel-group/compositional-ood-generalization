@@ -20,6 +20,8 @@ def sample_latents(
         z = _sample_random(n_samples, dim_per_slot)
     elif mode == "orthogonal":
         z = _sample_orthogonal(n_samples, dim_per_slot)
+    elif mode == "orthogonal_gap":
+        z = _sample_orthogonal_with_gap(n_samples, dim_per_slot, **kwargs)
     elif mode == "grid":
         z = _sample_grid(n_samples, dim_per_slot, **kwargs)
     elif mode == "full_grid":
@@ -39,7 +41,7 @@ def _sample_random(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
 
 
 def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
-    """Sample randomly along each edge of the unit cube that originates in the origin."""
+    """Sample randomly within each individual slot while keeping all other slots 0."""
     total_dim = sum(dim_per_slot)
 
     # sample randomly within each slot
@@ -55,6 +57,40 @@ def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
         z[i, start:stop] = _z[i, start:stop]
 
     return z
+
+
+def _sample_orthogonal_with_gap(
+    n_samples: int, dim_per_slot: List[int], gaps: List[Tuple[int, float, float]]
+) -> torch.Tensor:
+    total_dim = sum(dim_per_slot)
+    for dim, start, stop in gaps:
+        assert dim in range(
+            total_dim
+        ), f"Gap dimension must be in range({total_dim}), but got {dim}."
+        assert (
+            start < stop
+        ), f"Gap start must be smaller than stop, but got [{start}, {stop}] for dim {dim}."
+        assert (
+            start >= 0 and stop <= 1
+        ), f"Gap edges must be in [0, 1], but got [{start}, {stop}] for dim {dim}."
+        assert stop - start < 1, f"Gap can't span entire range [0, 1] for dim {dim}."
+
+    z = torch.Tensor(0, total_dim)
+
+    while z.shape[0] < n_samples:
+        # first sample normal orthogonal
+        _z = _sample_orthogonal(n_samples, dim_per_slot)
+
+        # then reject points
+        mask = torch.ones(n_samples)
+        for dim, start, stop in gaps:
+            _mask = torch.logical_or(_z[:, dim] < start, _z[:, dim] > stop)
+            mask = torch.logical_and(mask, _mask)
+
+        idx = mask.nonzero().squeeze(1)
+        z = torch.cat([z, _z[idx]])
+
+    return z[:n_samples]
 
 
 def _get_grid(dim_per_slot: List[int], grid_size: int = 10) -> torch.Tensor:
