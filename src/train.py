@@ -104,6 +104,7 @@ def run(**cfg):
     now_str = f"{datetime.datetime.now():%Y%m%d-%H%M%S}"
     save_dir = Path(cfg["save_dir"]) / (cfg["save_name"] + "_" + now_str)
     save_dir.mkdir(parents=True, exist_ok=False)
+    cfg["save_dir"] = save_dir
 
     wandb.init(project="COOD", config=cfg)
 
