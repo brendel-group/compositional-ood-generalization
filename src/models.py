@@ -89,22 +89,32 @@ class LinearComposition(nn.Module):
 
 class OcclusionLinearComposition(nn.Module):
     def __init__(
-        self, clamp: Union[bool, str] = True, soft_add: bool = False, alpha: float = 1
+        self,
+        clamp: Union[bool, str] = True,
+        add: str = "step",
+        ste: bool = False,
+        alpha: float = 1,
     ):
         super().__init__()
         self.clamp = clamp
-        self.soft_add = soft_add
+        self.add = add
+        self.ste = ste
         self.alpha = alpha
 
-    def _add_behind(self, a: torch.Tensor, b: torch.Tensor):
+    def _step_add(self, a: torch.Tensor, b: torch.Tensor):
+        # basically a·step(a) + b·step(-a)
         return torch.where(a < 0, b, a)
 
-    def _soft_add_behind(self, a: torch.Tensor, b: torch.Tensor):
-        # the normal add-behind is basically a·step(a) + b·step(-a)
+    def _sigmoid_add(self, a: torch.Tensor, b: torch.Tensor):
         # soften the step function with a sigmoid here
         return a * nn.functional.sigmoid(a * self.alpha) + b * nn.functional.sigmoid(
             -a * self.alpha
         )
+
+    def _hardsigmoid_add(self, a: torch.Tensor, b: torch.Tensor):
+        return a * nn.functional.hardsigmoid(
+            a * self.alpha
+        ) + b * nn.functional.hardsigmoid(-a * self.alpha)
 
     def forward(self, x, d_hidden):
         assert all_equal(
@@ -115,15 +125,17 @@ class OcclusionLinearComposition(nn.Module):
         x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
         out = x[:, 0, :]
         for slot in range(1, len(d_hidden)):
-            if isinstance(self.soft_add, bool):
-                if self.soft_add:
-                    out = self._soft_add_behind(out, x[:, slot, :])
-                else:
-                    out = self._add_behind(out, x[:, slot, :])
-            elif self.soft_add == "ste":
-                out_forward = self._add_behind(out, x[:, slot, :])
-                out_backward = self._soft_add_behind(out, x[:, slot, :])
+            if self.add == "step":
+                out_backward = self._step_add(out, x[:, slot, :])
+            elif self.add == "sigmoid":
+                out_backward = self._sigmoid_add(out, x[:, slot, :])
+            elif self.add == "hardsigmoid":
+                out_backward = self._hardsigmoid_add(out, x[:, slot, :])
+            if self.ste:
+                out_forward = self._step_add(out, x[:, slot, :])
                 out = out_backward + (out_forward - out_backward).detach()
+            else:
+                out = out_backward
 
         # the output can be restricted to positive numbers
         if isinstance(self.clamp, bool) and self.clamp:
