@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 import torch
 import torch.nn as nn
@@ -88,11 +88,18 @@ class LinearComposition(nn.Module):
 
 
 class OcclusionLinearComposition(nn.Module):
-    def __init__(self):
+    def __init__(self, clamp: Union[bool, str] = True, soft_add: bool = False):
         super().__init__()
+        self.clamp = clamp
+        self.soft_add = soft_add
 
     def _add_behind(self, a: torch.Tensor, b: torch.Tensor):
         return torch.where(a < 0, b, a)
+
+    def _soft_add_behind(self, a: torch.Tensor, b: torch.Tensor):
+        # the normal add-behind is basically a·step(a) + b·step(-a)
+        # soften the step function with a sigmoid here
+        return a * nn.functional.sigmoid(a) + b * nn.functional.sigmoid(-a)
 
     def forward(self, x, d_hidden):
         assert all_equal(
@@ -103,9 +110,19 @@ class OcclusionLinearComposition(nn.Module):
         x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
         out = x[:, 0, :]
         for slot in range(1, len(d_hidden)):
-            out = self._add_behind(out, x[:, slot, :])
+            if self.soft_add:
+                out = self._soft_add_behind(out, x[:, slot, :])
+            else:
+                out = self._add_behind(out, x[:, slot, :])
 
-        out = torch.where(out < 0, 0, out)
+        # the output can be restricted to positive numbers
+        if isinstance(self.clamp, bool) and self.clamp:
+            out = torch.where(out < 0, 0, out)
+        elif self.clamp == "relu":
+            out = nn.functional.relu(out)
+        elif self.clamp == "sotfplus":
+            out = nn.functional.softplus(out)
+
         return out
 
     def get_d_out(self, slot_d_out: List[int]) -> int:
