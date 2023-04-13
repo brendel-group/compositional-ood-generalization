@@ -115,10 +115,15 @@ class OcclusionLinearComposition(nn.Module):
         x = torch.stack(x.split(d_hidden, dim=-1), dim=1)
         out = x[:, 0, :]
         for slot in range(1, len(d_hidden)):
-            if self.soft_add:
-                out = self._soft_add_behind(out, x[:, slot, :])
-            else:
-                out = self._add_behind(out, x[:, slot, :])
+            if isinstance(self.soft_add, bool):
+                if self.soft_add:
+                    out = self._soft_add_behind(out, x[:, slot, :])
+                else:
+                    out = self._add_behind(out, x[:, slot, :])
+            elif self.soft_add == "ste":
+                out_forward = self._add_behind(out, x[:, slot, :])
+                out_backward = self._soft_add_behind(out, x[:, slot, :])
+                out = out_backward + (out_forward - out_backward).detach()
 
         # the output can be restricted to positive numbers
         if isinstance(self.clamp, bool) and self.clamp:
