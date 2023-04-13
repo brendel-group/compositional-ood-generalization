@@ -88,10 +88,13 @@ class LinearComposition(nn.Module):
 
 
 class OcclusionLinearComposition(nn.Module):
-    def __init__(self, clamp: Union[bool, str] = True, soft_add: bool = False):
+    def __init__(
+        self, clamp: Union[bool, str] = True, soft_add: bool = False, alpha: float = 1
+    ):
         super().__init__()
         self.clamp = clamp
         self.soft_add = soft_add
+        self.alpha = alpha
 
     def _add_behind(self, a: torch.Tensor, b: torch.Tensor):
         return torch.where(a < 0, b, a)
@@ -99,7 +102,9 @@ class OcclusionLinearComposition(nn.Module):
     def _soft_add_behind(self, a: torch.Tensor, b: torch.Tensor):
         # the normal add-behind is basically a·step(a) + b·step(-a)
         # soften the step function with a sigmoid here
-        return a * nn.functional.sigmoid(a) + b * nn.functional.sigmoid(-a)
+        return a * nn.functional.sigmoid(a * self.alpha) + b * nn.functional.sigmoid(
+            -a * self.alpha
+        )
 
     def forward(self, x, d_hidden):
         assert all_equal(
