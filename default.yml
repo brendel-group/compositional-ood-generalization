@@ -14,7 +14,7 @@ model:
   phi_kwargs:
     d_hidden: 10
 train:
-  epochs: 1000
+  epochs: 5000
   sample:
     mode: orthogonal
     n_samples: 10000
