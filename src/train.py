@@ -203,6 +203,7 @@ def run(**cfg):
             if cfg["wandb"]["make_plots"]:
                 fig = _get_mse_on_grid(f, f_hat, D)
                 log.update({"heatmap": wandb.Image(fig)})
+                plt.close(fig)
 
         # call wandb.log() only once to get the correct number of steps in the interface
         wandb.log(log)
