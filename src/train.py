@@ -189,7 +189,7 @@ def run(**cfg):
         loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer)
         log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
-        if epoch % cfg["eval"]["freq"] == cfg["eval"]["freq"]:
+        if epoch > 0 and epoch % cfg["eval"]["freq"] == 0:
             scores = evaluate(
                 f_hat, eval_ldrs, _get_metric_dict(cfg["eval"]["metrics"], f_hat.d_out)
             )
