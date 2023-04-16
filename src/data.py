@@ -169,13 +169,15 @@ def _get_face_grids(
     total_dim = sum(dim_per_slot)
     n_gridpoints = grid_size * grid_size
 
+    coords = torch.arange(grid_size) / (grid_size - 1)
+
     # if a specific face is specified only return those points
     if dims is not None:
         assert dims[0] != dims[1], "Dimensions can't be the same."
 
         z = torch.zeros(n_gridpoints, total_dim)
-        z[:, dims[0]] = torch.arange(grid_size).repeat(grid_size)
-        z[:, dims[1]] = torch.arange(grid_size).repeat_interleave(grid_size)
+        z[:, dims[0]] = coords.repeat(grid_size)
+        z[:, dims[1]] = coords.repeat_interleave(grid_size)
 
         return z
 
@@ -188,8 +190,8 @@ def _get_face_grids(
             face_idx = dim1 + dim2
             start = face_idx * n_gridpoints
             stop = start + n_gridpoints
-            z[start:stop, dim1] = torch.arange(grid_size).repeat(grid_size)
-            z[start:stop, dim2] = torch.arange(grid_size).repeat_interleave(grid_size)
+            z[start:stop, dim1] = coords.repeat(grid_size)
+            z[start:stop, dim2] = coords.repeat_interleave(grid_size)
 
     return z
 
