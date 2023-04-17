@@ -25,7 +25,10 @@ def _rectify(t: torch.Tensor) -> torch.Tensor:
 
 
 def visualize_latents(
-    latents: torch.Tensor, dim_per_slot: List[int], grid_size: int, out: Path = None
+    latents: torch.Tensor,
+    dim_per_slot: List[int],
+    grid_size: int = None,
+    out: Path = None,
 ):
     sb.set_theme("notebook", "whitegrid", rc={"axes.grid": False})
 
@@ -36,8 +39,11 @@ def visualize_latents(
     ]
     df = pd.DataFrame(latents.numpy(), columns=cols)
 
-    bins = (np.arange(grid_size + 1) - 0.5) / (grid_size - 1)
-    sb.pairplot(df, corner=True, diag_kws=dict(bins=bins))
+    if grid_size is not None:
+        bins = (np.arange(grid_size + 1) - 0.5) / (grid_size - 1)
+        sb.pairplot(df, corner=True, diag_kws=dict(bins=bins))
+    else:
+        sb.pairplot(df, corner=True)
 
 
 def visualize_slots_and_output(
