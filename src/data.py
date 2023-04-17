@@ -1,9 +1,10 @@
 from math import sqrt
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
 
+import models
 from models import CompositionalFunction
 from utils import all_equal
 
@@ -208,8 +209,21 @@ def _sample_grid(
 class Dataset(torch.utils.data.TensorDataset):
     """Simple Dataset with fixed number of samples."""
 
-    def __init__(self, generator: CompositionalFunction, dev: torch.device, **kwargs):
+    def __init__(
+        self,
+        generator: CompositionalFunction,
+        dev: torch.device,
+        transform: Union[callable, str] = None,
+        **kwargs,
+    ):
         z = sample_latents(generator.d_in, **kwargs).to(dev)
+
+        if isinstance(transform, str):
+            transform = getattr(models, transform)
+
+        if transform is not None:
+            z = transform(z)
+
         with torch.no_grad():
             x = generator(z)
         super().__init__(x, z)
@@ -218,11 +232,21 @@ class Dataset(torch.utils.data.TensorDataset):
 class InfiniteDataset(torch.utils.data.IterableDataset):
     """Dataset that draws new samples every epoch."""
 
-    def __init__(self, generator: CompositionalFunction, dev: torch.device, **kwargs):
+    def __init__(
+        self,
+        generator: CompositionalFunction,
+        dev: torch.device,
+        transform: Union[callable, str] = None,
+        **kwargs,
+    ):
         super().__init__()
         self.generator = generator
         self.kwargs = kwargs
         self.dev = dev
+        if isinstance(transform, str):
+            self.transform = getattr(models, transform)
+        else:
+            self.transform = transform
 
     def __iter__(self):
         # can't handle multiple workers atm
@@ -235,6 +259,10 @@ class InfiniteDataset(torch.utils.data.IterableDataset):
 
     def reset(self):
         self.z = sample_latents(self.generator.d_in, **self.kwargs).to(self.dev)
+
+        if self.transform is not None:
+            self.z = self.transform(self.z)
+
         with torch.no_grad():
             self.x = self.generator(self.z)
 
