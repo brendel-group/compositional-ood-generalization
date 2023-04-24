@@ -54,6 +54,9 @@ class InvertibleMLP(nn.Sequential):
         self.d_in = d_in
         self.d_out = d_out
 
+        if isinstance(nonlin, str):
+            nonlin = getattr(nn, nonlin)()
+
         for _ in range(n_layers - 2):
             self.append(nonlin)
             self.append(nn.Linear(d_hidden, d_hidden, dtype=dtype))
@@ -74,6 +77,42 @@ class InvertibleMLP(nn.Sequential):
                     weight_init(m.weight)
                 if bias_init is not None:
                     bias_init(m.bias)
+
+
+class DeconvDecoder(nn.Sequential):
+    def __init__(
+        self,
+        d_in: int,
+        d_out: List[int],
+        nonlin: nn.Module = nn.ELU(),
+    ):
+        super().__init__()
+        self.d_in = d_in
+        self.d_out = d_out
+        d_hidden = 256
+        # TODO at the moment, this is hard-coded for this specific size
+        assert d_in == [64, 64, 3]
+
+        if isinstance(nonlin, str):
+            nonlin = getattr(nn, nonlin)()
+
+        self.append(nn.Linear(d_in, d_hidden))
+
+        for _ in range(2):
+            self.append(nonlin)
+            self.append(nn.Linear(d_hidden, d_hidden))
+        
+        n_channel = 32
+        self.append(nn.Unflatten(1, (n_channel, 4, 4)))
+
+        # each deconvolution doubles the spatial dimension
+        for _ in range(3):
+            self.append(nonlin)
+            self.append(nn.ConvTranspose2d(n_channel, n_channel, 4, 2, 1))
+
+        self.append(nonlin)
+        self.append(nn.ConvTranspose2d(n_channel, d_out[-1], 4, 2, 1))
+
 
 
 class SpriteworldRenderer(nn.Module):
