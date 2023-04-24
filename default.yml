@@ -18,6 +18,7 @@ train:
   sample:
     mode: orthogonal
     n_samples: 10000
+    resample: True
   batch_size: 512
   lr: 0.001
   scheduler: CosineAnnealingLR
@@ -37,9 +38,11 @@ eval:
     - name: all
       mode: random
       n_samples: 10000
+      resample: False
     - name: ID
       mode: orthogonal
       n_samples: 10000
+      resample: False
   batch_size: 1000
   metrics:
     - R2Score

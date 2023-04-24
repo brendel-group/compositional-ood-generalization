@@ -1,4 +1,5 @@
 from math import sqrt
+from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
@@ -214,18 +215,23 @@ class Dataset(torch.utils.data.TensorDataset):
         generator: CompositionalFunction,
         dev: torch.device,
         transform: Union[callable, str] = None,
+        load: Path = None,
         **kwargs,
-    ):
-        z = sample_latents(generator.d_in, **kwargs).to(dev)
+    ):  
+        if load is not None:
+            self.tensors = torch.load(load)
 
-        if isinstance(transform, str):
-            transform = getattr(models, transform)
+        else:
+            z = sample_latents(generator.d_in, **kwargs).to(dev)
 
-        if transform is not None:
-            z = transform(z)
+            if isinstance(transform, str):
+                transform = getattr(models, transform)
 
-        with torch.no_grad():
-            x = generator(z)
+            if transform is not None:
+                z = transform(z)
+
+            with torch.no_grad():
+                x = generator(z)
         super().__init__(x, z)
 
 
@@ -276,6 +282,22 @@ class BatchDataLoader(torch.utils.data.DataLoader):
         )
 
 
+def _get_dataloader(
+    generator: nn.Module,
+    dev: torch.device,
+    resample: bool=False,
+    batch_size: int=10000,
+    **kwargs
+) -> torch.utils.data.DataLoader:
+    if resample:
+        data_set = InfiniteDataset(generator, dev, **kwargs)
+    else:
+        data_set = Dataset(generator, dev, **kwargs)
+
+    data_ldr = BatchDataLoader(data_set, batch_size)
+    return data_ldr
+
+
 def get_dataloaders(
     generator: nn.Module,
     train_cfg: Dict[str, Any],
@@ -284,8 +306,7 @@ def get_dataloaders(
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
-    train_set = InfiniteDataset(generator, dev, **train_cfg["sample"])
-    train_ldr = BatchDataLoader(train_set, train_cfg["batch_size"])
+    train_ldr = _get_dataloader(generator, dev, **train_cfg["sample"])
 
     eval_set_cfgs = eval_cfg["sample"]
     if not isinstance(eval_set_cfgs, list):
@@ -293,8 +314,7 @@ def get_dataloaders(
 
     eval_ldrs = {}
     for eval_set_cfg in eval_set_cfgs:
-        eval_set = Dataset(generator, dev, **eval_set_cfg)
-        eval_ldr = BatchDataLoader(eval_set, eval_cfg["batch_size"])
+        eval_ldr = _get_dataloader(generator, dev, **eval_set_cfg)
 
         eval_ldrs[eval_set_cfg["name"]] = eval_ldr
 

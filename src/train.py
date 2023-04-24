@@ -1,24 +1,21 @@
 import datetime
 import random
 import time
+from math import prod
 from pathlib import Path
 from typing import Dict, List
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import wandb
 from torchmetrics import MeanSquaredError, Metric, R2Score
-import matplotlib.pyplot as plt
 
-from data import get_dataloaders, sample_latents
-from models import (
-    CompositionalFunction,
-    InvertibleMLP,
-    LinearComposition,
-    ParallelSlots,
-)
 import models
+import wandb
+from data import get_dataloaders, sample_latents
+from models import (CompositionalFunction, InvertibleMLP, LinearComposition,
+                    ParallelSlots)
 from vis import visualize_score_heatmaps
 
 if torch.cuda.is_available():
@@ -33,7 +30,7 @@ def _get_metric_dict(metric_names: List[str], d_out: int) -> Dict[str, callable]
     for name in metric_names:
         if name == "R2Score":
             metrics[name] = R2Score(
-                num_outputs=d_out, multioutput="uniform_average"
+                num_outputs=prod(d_out), multioutput="uniform_average"
             ).to(dev)
         elif name == "MSE":
             metrics[name] = MeanSquaredError().to(dev)
@@ -91,11 +88,11 @@ def evaluate(
 
     for loader_name, loader in loaders.items():
         for batch, (x, z) in enumerate(loader):
-            x = x.to(dev)
+            x = x.to(dev).flatten(1)
             z = z.to(dev)
 
             with torch.no_grad():
-                x_hat = model(z)
+                x_hat = model(z).flatten(1)
 
             for metric_name, metric in metrics.items():
                 score_name = f"{metric_name}_{loader_name}"
