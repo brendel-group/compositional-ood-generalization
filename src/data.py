@@ -232,7 +232,7 @@ class Dataset(torch.utils.data.TensorDataset):
 
             with torch.no_grad():
                 x = generator(z)
-        super().__init__(x, z)
+            super().__init__(x, z)
 
 
 class InfiniteDataset(torch.utils.data.IterableDataset):
@@ -282,13 +282,14 @@ class BatchDataLoader(torch.utils.data.DataLoader):
         )
 
 
-def _get_dataloader(
+def get_dataloader(
     generator: nn.Module,
     dev: torch.device,
     resample: bool=False,
     batch_size: int=10000,
     **kwargs
 ) -> torch.utils.data.DataLoader:
+    assert not resample and kwargs.get("load", ""), "Dataset path is given, but will not be used with resampling=True."
     if resample:
         data_set = InfiniteDataset(generator, dev, **kwargs)
     else:
@@ -306,7 +307,7 @@ def get_dataloaders(
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
-    train_ldr = _get_dataloader(generator, dev, **train_cfg["sample"])
+    train_ldr = get_dataloader(generator, dev, batch_size=train_cfg["batch_size"], **train_cfg["sample"])
 
     eval_set_cfgs = eval_cfg["sample"]
     if not isinstance(eval_set_cfgs, list):
@@ -314,7 +315,7 @@ def get_dataloaders(
 
     eval_ldrs = {}
     for eval_set_cfg in eval_set_cfgs:
-        eval_ldr = _get_dataloader(generator, dev, **eval_set_cfg)
+        eval_ldr = get_dataloader(generator, dev, batch_size=eval_cfg["batch_size"], **eval_set_cfg)
 
         eval_ldrs[eval_set_cfg["name"]] = eval_ldr
 

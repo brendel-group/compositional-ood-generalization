@@ -3,7 +3,7 @@ import random
 import time
 from math import prod
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +13,7 @@ from torchmetrics import MeanSquaredError, Metric, R2Score
 
 import models
 import wandb
-from data import get_dataloaders, sample_latents
+from data import get_dataloader, get_dataloaders, sample_latents
 from models import (CompositionalFunction, InvertibleMLP, LinearComposition,
                     ParallelSlots)
 from vis import visualize_score_heatmaps
@@ -105,21 +105,29 @@ def evaluate(
     return scores
 
 
-def _get_mse_on_grid(
+def visualize_mse_on_grid(
     generator: nn.Module,
     model: nn.Module,
     dim_per_slot: List[int],
+    vis_cfg: Dict[str, Any],
 ) -> plt.Figure:
     model.eval()
-    z = sample_latents(dim_per_slot, "grid", n_samples=10000, grid_size=11).to(dev)
+    loader = get_dataloader(generator, dev, batch_size=vis_cfg["batch_size"], **vis_cfg["sample"])
 
-    with torch.no_grad():
-        x = generator(z)
-        x_hat = model(z)
-        mse = (x_hat - x).pow(2).mean(dim=-1)
+    all_mse = torch.Tensor().to(dev)
+    all_z = torch.Tensor().to(dev)
+    for (x, z) in loader:
+        x = x.to(dev).flatten(1)
+        z = z.to(dev)
+        all_z = torch.cat([all_z, z], dim=0)
+
+        with torch.no_grad():
+            x_hat = model(z).flatten(1)
+            mse = (x_hat - x).pow(2).mean(dim=-1)
+            all_mse = torch.cat([all_mse, mse], dim=0)
 
     fig = visualize_score_heatmaps(
-        z.to("cpu"), mse.to("cpu"), dim_per_slot, "MSE", logging=True
+        all_z.to("cpu"), all_mse.to("cpu"), dim_per_slot, "MSE", logging=True
     )
     return fig
 
@@ -159,8 +167,7 @@ def run(**cfg):
         model = getattr(models, cfg["model"]["phi"])
         phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
     phi_hat = ParallelSlots(phi_hat)
-    f_hat = CompositionalFunction(C, phi_hat)
-    f_hat.to(dev)
+    f_hat = CompositionalFunction(C, phi_hat).to(dev)
 
     if cfg["wandb"]["watch"]:
         wandb.watch(f_hat, log="all", log_freq=cfg["wandb"]["watch_freq"])
@@ -198,7 +205,7 @@ def run(**cfg):
                     torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
 
             if cfg["wandb"]["make_plots"]:
-                fig = _get_mse_on_grid(f, f_hat, D)
+                fig = visualize_mse_on_grid(f, f_hat, D, cfg["visualization"])
                 log.update({"heatmap": wandb.Image(fig)})
                 plt.close(fig)
 

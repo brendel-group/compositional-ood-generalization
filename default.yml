@@ -16,7 +16,7 @@ model:
 train:
   epochs: 5000
   sample:
-    mode: orthogonal
+    mode: random
     n_samples: 10000
     resample: True
   batch_size: 512
@@ -39,12 +39,21 @@ eval:
       mode: random
       n_samples: 10000
       resample: False
+      transform: scale_latents
     - name: ID
       mode: orthogonal
       n_samples: 10000
       resample: False
+      transform: scale_latents
   batch_size: 1000
   metrics:
     - R2Score
     - MSE
   save_scores: []
+visualization:
+  sample:
+    mode: grid
+    n_samples: 10000
+    resample: False
+    transform: scale_latents
+  batch_size: 1000
