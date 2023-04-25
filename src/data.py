@@ -299,16 +299,20 @@ def get_dataloader(
     return data_ldr
 
 
+# TODO this function should be simplified to just return eval/vis loaders in one dict
+# with the option in the config to not evaluate on each loader or something similar
 def get_dataloaders(
     generator: nn.Module,
+    dev: torch.device,
     train_cfg: Dict[str, Any],
     eval_cfg: Dict[str, Any],
-    dev: torch.device,
+    vis_cfg: Dict[str, Any] = None,
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
     train_ldr = get_dataloader(generator, dev, batch_size=train_cfg["batch_size"], **train_cfg["sample"])
 
+    # TODO refactor this to also use a dict instead of a list
     eval_set_cfgs = eval_cfg["sample"]
     if not isinstance(eval_set_cfgs, list):
         eval_set_cfgs = [eval_set_cfgs]
@@ -318,5 +322,13 @@ def get_dataloaders(
         eval_ldr = get_dataloader(generator, dev, batch_size=eval_cfg["batch_size"], **eval_set_cfg)
 
         eval_ldrs[eval_set_cfg["name"]] = eval_ldr
+
+    if vis_cfg is not None:
+        vis_ldrs = {}
+        for name, cfg in vis_cfg.items():
+            vis_ldr = get_dataloader(generator, dev, **cfg)
+            vis_ldrs[name] = vis_ldr
+        
+        return train_ldr, eval_ldrs, vis_ldrs
 
     return train_ldr, eval_ldrs

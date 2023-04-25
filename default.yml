@@ -31,7 +31,6 @@ train:
 wandb:
   watch: False
   watch_freq: 50
-  make_plots: True
 eval:
   freq: 100
   sample:
@@ -51,9 +50,17 @@ eval:
     - MSE
   save_scores: []
 visualization:
-  sample:
+  heatmap:
+    load: /mnt/qb/work/bethge/twiedemer43/data/cood/SW_eval_grid_1e4.pt
     mode: grid
     n_samples: 10000
     resample: False
     transform: scale_latents
-  batch_size: 1000
+    batch_size: 1000
+  reconstruction:
+    load: /mnt/qb/work/bethge/twiedemer43/data/cood/SW_eval_rand_1e4.pt
+    mode: random
+    n_samples: 10000
+    resample: False
+    transform: scale_latents
+    batch_size: 5

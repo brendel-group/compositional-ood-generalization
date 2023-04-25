@@ -14,9 +14,8 @@ from torchmetrics import MeanSquaredError, Metric, R2Score
 import models
 import wandb
 from data import get_dataloader, get_dataloaders, sample_latents
-from models import (CompositionalFunction, DeconvDecoder, InvertibleMLP,
-                    LinearComposition, ParallelSlots)
-from vis import visualize_score_heatmaps
+from models import *
+from vis import visualize_score_heatmaps, visualize_output_v_target
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -108,14 +107,28 @@ def evaluate(
     return scores
 
 
-def visualize_mse_on_grid(
-    generator: nn.Module,
+def visualize_reconstruction(
     model: nn.Module,
-    dim_per_slot: List[int],
-    vis_cfg: Dict[str, Any],
+    loader: torch.utils.data.DataLoader,
 ) -> plt.Figure:
     model.eval()
-    loader = get_dataloader(generator, dev, batch_size=vis_cfg["batch_size"], **vis_cfg["sample"])
+
+    x, z = next(iter(loader))
+    z = z.to(dev)
+
+    x_hat, phi_hat = model(z, return_slot_outputs=True)
+    phi_hat = [ph.cpu() for ph in phi_hat]
+
+    fig = visualize_output_v_target(x.cpu(), x_hat.cpu(), phi_hat, logging=True)
+    return fig
+
+
+def visualize_mse_on_grid(
+    model: nn.Module,
+    loader: torch.utils.data.DataLoader,
+    dim_per_slot: List[int],
+) -> plt.Figure:
+    model.eval()
 
     all_mse = torch.Tensor().to(dev)
     all_z = torch.Tensor().to(dev)
@@ -130,7 +143,7 @@ def visualize_mse_on_grid(
             all_mse = torch.cat([all_mse, mse], dim=0)
 
     fig = visualize_score_heatmaps(
-        all_z.to("cpu"), all_mse.to("cpu"), dim_per_slot, "MSE", logging=True
+        all_z.cpu(), all_mse.cpu(), dim_per_slot, "MSE", logging=True
     )
     return fig
 
@@ -163,7 +176,7 @@ def run(**cfg):
 
     # TODO check whether we need more workers or better background prefetching
 
-    train_ldr, eval_ldrs = get_dataloaders(f, cfg["train"], cfg["eval"], dev)
+    train_ldr, eval_ldrs, vis_ldrs = get_dataloaders(f, dev, cfg["train"], cfg["eval"], cfg["visualization"])
 
     phi_hat = []
     for d_in, d_out in zip(D, M):
@@ -207,12 +220,16 @@ def run(**cfg):
                     scores[name] = val
                     torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
 
-            if cfg["wandb"]["make_plots"]:
-                fig = visualize_mse_on_grid(f, f_hat, D, cfg["visualization"])
+            if cfg["visualization"]:
+                fig = visualize_mse_on_grid(f_hat, vis_ldrs["heatmap"], D)
                 log.update({"heatmap": wandb.Image(fig)})
                 plt.close(fig)
 
-        # call wandb.log() only once to get the correct number of steps in the interface
+                fig = visualize_reconstruction(f_hat, vis_ldrs["reconstruction"])
+                log.update({"reconstruction": wandb.Image(fig)})
+                plt.close(fig)
+
+        # call only once to get the correct number of steps in the interface
         wandb.log(log)
 
         scheduler.step()

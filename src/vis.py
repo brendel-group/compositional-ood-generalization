@@ -128,6 +128,108 @@ def visualize_slots_and_output(
     plt.show()
 
 
+def visualize_output_v_target(
+    target: torch.Tensor,
+    output: torch.Tensor,
+    slots: Tuple[torch.Tensor],
+    plot_size: float = 3,
+    title: str = "",
+    out: Path = None,
+    logging: bool = False,
+):
+    sb.set_theme("notebook", "whitegrid")
+
+    target = target.detach()
+    output = output.detach()
+    slots = [slot.detach() for slot in slots]
+
+    n_cols = output.shape[0]
+    n_rows = len(slots) + 2
+
+    fig = plt.figure(figsize=(n_cols * plot_size, n_rows * plot_size))
+    fig.suptitle(title)
+
+    # plot as image if there are color channels, otherwise as heatmap
+    plot_rgb = output[0].dim() == 3
+
+    for col in range(n_cols):
+        if plot_rgb:
+            imshow = lambda ax, img: ax.imshow(img)
+        else:
+            # each column uses the same min/max for the colormap
+            all_values = torch.cat([slot[col] for slot in slots] + [output[col]] + [target[col]])
+            vmin = min(all_values.min(), -all_values.max())
+            vmax = max(all_values.max(), -all_values.min())
+
+            imshow = lambda ax, img: ax.imshow(img, cmap="RdBu", vmin=vmin, vmax=vmax)
+
+        # plot slots
+        for row in range(n_rows - 2):
+            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            imshow(ax, slots[row][col])
+            ax.axis("off")
+
+        # plot output
+        ax = fig.add_subplot(n_rows, n_cols, (n_rows - 2) * n_cols + col + 1)
+        imshow(ax, output[col])
+        ax.axis("off")
+
+        # plot target
+        ax = fig.add_subplot(n_rows, n_cols, (n_rows - 1) * n_cols + col + 1)
+        imshow(ax, target[col])
+        ax.axis("off")
+
+    # add column titles
+    for col, ax in enumerate(fig.axes[::n_rows]):
+        ax.text(
+            0.5,
+            1.05,
+            f"Sample {col + 1}",
+            horizontalalignment="center",
+            verticalalignment="bottom",
+            transform=ax.transAxes,
+        )
+
+    # add row titles
+    for row, ax in enumerate(fig.axes[: n_rows - 2]):
+        ax.text(
+            -0.05,
+            0.5,
+            f"Slot {row + 1}",
+            rotation="vertical",
+            horizontalalignment="right",
+            verticalalignment="center",
+            transform=ax.transAxes,
+        )
+
+    ax = fig.axes[n_rows - 2]
+    ax.text(
+        -0.05,
+        0.5,
+        "Output",
+        rotation="vertical",
+        horizontalalignment="right",
+        verticalalignment="center",
+        transform=ax.transAxes,
+    )
+
+    ax = fig.axes[n_rows - 1]
+    ax.text(
+        -0.05,
+        0.5,
+        "Target",
+        rotation="vertical",
+        horizontalalignment="right",
+        verticalalignment="center",
+        transform=ax.transAxes,
+    )
+
+    if logging:
+        return fig
+    else:
+        plt.show()
+
+
 def _plot_image_grid(axs, x):
     # plot as image if there are color channels, otherwise as heatmap
     plot_rgb = x.dim() == 4
