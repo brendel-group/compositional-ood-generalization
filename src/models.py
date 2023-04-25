@@ -105,11 +105,7 @@ class DeconvDecoder(nn.Sequential):
 
         n_channel = 32
         # TODO at the moment, this is hard-coded for this specific size
-        assert d_out == [
-            64,
-            64,
-            3,
-        ], f"Expecting output size [64, 64, 3], but got {d_out}."
+        assert d_out in [[64, 64, 3], [64, 64, 4]], f"Expecting output size [64, 64, 3] or [64, 64, 4], but got {d_out}."
 
         if isinstance(nonlin, str):
             nonlin = getattr(nn, nonlin)()
@@ -375,7 +371,7 @@ class AlphaAdd(Composition):
     def get_d_out(
         self, slot_d_out: Union[List[int], List[List[int]]]
     ) -> Union[int, List[int]]:
-        return slot_d_out[0]
+        return slot_d_out[0][:3] + [3]
 
 
 class CompositionalFunction(nn.Module):

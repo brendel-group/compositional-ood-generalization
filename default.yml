@@ -5,14 +5,12 @@ data:
   D: [2, 2]
   M: [16, 16]
   phi: InvertibleMLP
-  phi_kwargs:
-    d_hidden: 10
+  phi_kwargs: {}
   C: LinearComposition
   C_kwargs: {}
 model:
   phi: InvertibleMLP
-  phi_kwargs:
-    d_hidden: 10
+  phi_kwargs: {}
 train:
   epochs: 5000
   sample:
@@ -51,14 +49,12 @@ eval:
   save_scores: []
 visualization:
   heatmap:
-    load: /mnt/qb/work/bethge/twiedemer43/data/cood/SW_eval_grid_1e4.pt
     mode: grid
     n_samples: 10000
     resample: False
     transform: scale_latents
     batch_size: 1000
   reconstruction:
-    load: /mnt/qb/work/bethge/twiedemer43/data/cood/SW_eval_rand_1e4.pt
     mode: random
     n_samples: 10000
     resample: False
