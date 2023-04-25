@@ -7,8 +7,6 @@ import torch
 import torch.nn as nn
 from spriteworld import renderers, sprite
 
-from utils import all_equal
-
 SPRITEWORLD_DEFAULT_RANGES = {
     "x": (0.1, 0.9),
     "y": (0.2, 0.8),
@@ -36,7 +34,16 @@ def scale_latents(
     return z
 
 
-class InvertibleMLP(nn.Sequential):
+class Permute(nn.Module):
+    def __init__(self, dims: Tuple[int]):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(self.dims)
+
+
+class MLP(nn.Sequential):
     def __init__(
         self,
         d_in: int,
@@ -80,22 +87,17 @@ class InvertibleMLP(nn.Sequential):
                     bias_init(m.bias)
 
 
-class Permute(nn.Module):
-    def __init__(self, dims: Tuple[int]):
-        super().__init__()
-        self.dims = dims
-
-    def forward(self, x):
-        return x.permute(self.dims)
-
-
-class DeconvDecoder(nn.Sequential):
+class DeconvMLP(nn.Sequential):
     def __init__(
         self,
         d_in: int,
         d_out: List[int],
         d_hidden: int = 256,
         n_layers: int = 3,
+        n_channel: int = 32,
+        kernel_size: int = 4,
+        stride: int = 2,
+        padding: int = 1,
         nonlin: nn.Module = nn.ELU(),
         **kwargs,
     ):
@@ -103,7 +105,6 @@ class DeconvDecoder(nn.Sequential):
         self.d_in = d_in
         self.d_out = d_out
 
-        n_channel = 32
         # TODO at the moment, this is hard-coded for this specific size
         assert d_out in [
             [64, 64, 3],
@@ -127,10 +128,14 @@ class DeconvDecoder(nn.Sequential):
         # each deconvolution doubles the spatial dimension
         for _ in range(3):
             self.append(nonlin)
-            self.append(nn.ConvTranspose2d(n_channel, n_channel, 4, 2, 1))
+            self.append(
+                nn.ConvTranspose2d(n_channel, n_channel, kernel_size, stride, padding)
+            )
 
         self.append(nonlin)
-        self.append(nn.ConvTranspose2d(n_channel, d_out[-1], 4, 2, 1))
+        self.append(
+            nn.ConvTranspose2d(n_channel, d_out[-1], kernel_size, stride, padding)
+        )
 
         # [B, W, H, C]
         self.append(Permute((0, 2, 3, 1)))
@@ -216,7 +221,7 @@ class Composition(nn.Module, ABC):
         pass
 
 
-class LinearComposition(Composition):
+class Add(Composition):
     """C for simple addition."""
 
     def __init__(self):
@@ -239,7 +244,7 @@ class LinearComposition(Composition):
         return slot_d_out[0]
 
 
-class OcclusionLinearComposition(Composition):
+class OccludedAdd(Composition):
     def __init__(
         self,
         clamp: Union[bool, str] = True,
@@ -258,7 +263,7 @@ class OcclusionLinearComposition(Composition):
     def _add_step(self, a: torch.Tensor, b: torch.Tensor):
         # basically a·step(a) + b·step(-a)
         if self.color_channel:
-            mask = a.sum(-1).unsqueeze(-1) <= 0
+            mask = a.abs().mean(-1).unsqueeze(-1) <= 0
         else:
             mask = a <= 0
         return torch.where(mask, b, a)
@@ -266,7 +271,7 @@ class OcclusionLinearComposition(Composition):
     def _add_sigmoid(self, a: torch.Tensor, b: torch.Tensor):
         # soften the step function with a sigmoid here
         if self.color_channel:
-            mask = a.sum(-1).unsqueeze(-1)
+            mask = a.abs().mean(-1).unsqueeze(-1)
         else:
             mask = a
         return a * nn.functional.sigmoid(mask * self.alpha) + b * nn.functional.sigmoid(
@@ -275,7 +280,7 @@ class OcclusionLinearComposition(Composition):
 
     def _add_hardsigmoid(self, a: torch.Tensor, b: torch.Tensor):
         if self.color_channel:
-            mask = a.sum(-1).unsqueeze(-1)
+            mask = a.abs().mean(-1).unsqueeze(-1)
         else:
             mask = a
         return a * nn.functional.hardsigmoid(
@@ -295,7 +300,6 @@ class OcclusionLinearComposition(Composition):
         # or do anti-aliasing here.
 
         # split outputs from each slot
-        # we know that all slot outputs have the same dimension, so we can reshape here
         out = x[:, 0, ...]
         for slot in range(1, x.shape[1]):
             if self.add == "step":
@@ -304,6 +308,8 @@ class OcclusionLinearComposition(Composition):
                 out_backward = self._add_sigmoid(out, x[:, slot, :])
             elif self.add == "hardsigmoid":
                 out_backward = self._add_hardsigmoid(out, x[:, slot, :])
+            elif self.add == "add":
+                out_backward = x[:, slot, :] + out
             if self.ste:
                 out_forward = self._add_step(out, x[:, slot, :])
                 out = out_backward + (out_forward - out_backward).detach()
@@ -360,7 +366,7 @@ class AlphaAdd(Composition):
         # interpret channels as RGBa
         assert (
             x.ndim == 5 and x.shape[-1] == 4
-        ), f"Expexted input to have shape [B, S, W, H, C] with C=4, but got {x.shape}."
+        ), f"Expexted input to have shape [B, S, W, H, 4], but got {x.shape}."
 
         # paste everything onto an opaque black canvas
         out_rgb = torch.zeros_like(x[:, 0, :, :, :3])
