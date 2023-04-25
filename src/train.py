@@ -3,7 +3,7 @@ import random
 import time
 from math import prod
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,8 +14,8 @@ from torchmetrics import MeanSquaredError, Metric, R2Score
 import models
 import wandb
 from data import get_dataloader, get_dataloaders, sample_latents
-from models import (CompositionalFunction, InvertibleMLP, LinearComposition,
-                    ParallelSlots)
+from models import (CompositionalFunction, DeconvDecoder, InvertibleMLP,
+                    LinearComposition, ParallelSlots)
 from vis import visualize_score_heatmaps
 
 if torch.cuda.is_available():
@@ -25,12 +25,15 @@ else:
 dev = torch.device(dev)
 
 
-def _get_metric_dict(metric_names: List[str], d_out: int) -> Dict[str, callable]:
+def _get_metric_dict(metric_names: List[str], d_out: Union[int, List[int]]) -> Dict[str, callable]:
+    if isinstance(d_out, list):
+        d_out = prod(d_out)
+
     metrics = {}
     for name in metric_names:
         if name == "R2Score":
             metrics[name] = R2Score(
-                num_outputs=prod(d_out), multioutput="uniform_average"
+                num_outputs=d_out, multioutput="uniform_average"
             ).to(dev)
         elif name == "MSE":
             metrics[name] = MeanSquaredError().to(dev)

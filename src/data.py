@@ -289,7 +289,7 @@ def get_dataloader(
     batch_size: int=10000,
     **kwargs
 ) -> torch.utils.data.DataLoader:
-    assert not resample and kwargs.get("load", ""), "Dataset path is given, but will not be used with resampling=True."
+    assert not (resample and kwargs.get("load", "")), "Dataset path is given, but will not be used with resampling=True."
     if resample:
         data_set = InfiniteDataset(generator, dev, **kwargs)
     else:

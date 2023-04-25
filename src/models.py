@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from math import prod
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Tuple
 
 import numpy as np
 import torch
@@ -65,7 +65,8 @@ class InvertibleMLP(nn.Sequential):
         if isinstance(d_out, list):
             d_out = prod(d_out)
         self.append(nn.Linear(d_hidden, d_out, dtype=dtype))
-        self.append(nn.Unflatten(dim=1, unflattened_size=self.d_out))
+        if isinstance(self.d_out, list):
+            self.append(nn.Unflatten(dim=1, unflattened_size=self.d_out))
 
         if init_dict is not None:
             self.init_weights(**init_dict)
@@ -79,30 +80,45 @@ class InvertibleMLP(nn.Sequential):
                     bias_init(m.bias)
 
 
+class Permute(nn.Module):
+    def __init__(self, dims: Tuple[int]):
+        super().__init__()
+        self.dims = dims
+    
+    def forward(self, x):
+        return x.permute(self.dims)
+
+
 class DeconvDecoder(nn.Sequential):
     def __init__(
         self,
         d_in: int,
         d_out: List[int],
+        d_hidden: int = 256,
+        n_layers: int = 3,
         nonlin: nn.Module = nn.ELU(),
+        **kwargs
     ):
         super().__init__()
         self.d_in = d_in
         self.d_out = d_out
-        d_hidden = 256
+        
+        n_channel = 32
         # TODO at the moment, this is hard-coded for this specific size
-        assert d_in == [64, 64, 3]
+        assert d_out == [64, 64, 3], f"Expecting output size [64, 64, 3], but got {d_out}."
 
         if isinstance(nonlin, str):
             nonlin = getattr(nn, nonlin)()
 
         self.append(nn.Linear(d_in, d_hidden))
 
-        for _ in range(2):
+        for _ in range(n_layers - 2):
             self.append(nonlin)
             self.append(nn.Linear(d_hidden, d_hidden))
+
+        self.append(nonlin)
+        self.append(nn.Linear(d_hidden, n_channel * 4 * 4))
         
-        n_channel = 32
         self.append(nn.Unflatten(1, (n_channel, 4, 4)))
 
         # each deconvolution doubles the spatial dimension
@@ -112,6 +128,9 @@ class DeconvDecoder(nn.Sequential):
 
         self.append(nonlin)
         self.append(nn.ConvTranspose2d(n_channel, d_out[-1], 4, 2, 1))
+
+        # [B, W, H, C]
+        self.append(Permute((0, 2, 3, 1)))
 
 
 
