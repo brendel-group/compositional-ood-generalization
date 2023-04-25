@@ -84,7 +84,7 @@ class Permute(nn.Module):
     def __init__(self, dims: Tuple[int]):
         super().__init__()
         self.dims = dims
-    
+
     def forward(self, x):
         return x.permute(self.dims)
 
@@ -97,15 +97,19 @@ class DeconvDecoder(nn.Sequential):
         d_hidden: int = 256,
         n_layers: int = 3,
         nonlin: nn.Module = nn.ELU(),
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.d_in = d_in
         self.d_out = d_out
-        
+
         n_channel = 32
         # TODO at the moment, this is hard-coded for this specific size
-        assert d_out == [64, 64, 3], f"Expecting output size [64, 64, 3], but got {d_out}."
+        assert d_out == [
+            64,
+            64,
+            3,
+        ], f"Expecting output size [64, 64, 3], but got {d_out}."
 
         if isinstance(nonlin, str):
             nonlin = getattr(nn, nonlin)()
@@ -118,7 +122,7 @@ class DeconvDecoder(nn.Sequential):
 
         self.append(nonlin)
         self.append(nn.Linear(d_hidden, n_channel * 4 * 4))
-        
+
         self.append(nn.Unflatten(1, (n_channel, 4, 4)))
 
         # each deconvolution doubles the spatial dimension
@@ -133,23 +137,21 @@ class DeconvDecoder(nn.Sequential):
         self.append(Permute((0, 2, 3, 1)))
 
 
-
 class SpriteworldRenderer(nn.Module):
     def __init__(
         self,
         d_in: int,
         d_out: List[int],
-        alpha: bool = False,
         **kwargs,
     ):
         super().__init__()
         img_h, img_w = d_out[:2]
-        if d_out[2] != 3:
-            raise NotImplementedError("Can only render to RGB.")
+        if d_out[2] not in [3, 4]:
+            raise NotImplementedError("Can only render to RGB/RGBa.")
 
         self.d_in = d_in
         self.d_out = d_out
-        self.alpha = alpha
+        self.alpha = d_out[2] == 4
 
         self.shape_names = ["triangle", "square", "circle"]
 
@@ -327,21 +329,22 @@ class OcclusionLinearComposition(Composition):
 
 class AlphaAdd(Composition):
     """C for addition with alpha channel."""
+
     def __init__(self, clamp: bool = True):
         super().__init__()
         self.clamp = clamp
 
     def _alpha_add(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         """Add `a` over `b`."""
-        alpha_a = a[:,:,:,-1]
-        alpha_b = b[:,:,:,-1]
+        alpha_a = a[:, :, :, -1].unsqueeze(-1)
+        alpha_b = b[:, :, :, -1].unsqueeze(-1)
         if self.clamp:
             alpha_a = alpha_a.clamp(0, 1)
             alpha_b = alpha_b.clamp(0, 1)
         alpha = alpha_a + (1 - alpha_a) * alpha_b
 
-        a = a[:,:,:,:3]
-        b = b[:,:,:,:3]
+        a = a[:, :, :, :3]
+        b = b[:, :, :, :3]
         rgb = (alpha_a * a + (1 - alpha_a) * alpha_b * b) / alpha
 
         return torch.cat([rgb, alpha], dim=3)
@@ -354,14 +357,16 @@ class AlphaAdd(Composition):
                 f"AlphaAdd Composition expects slots with equal output size, \
                 but got shapes {[_x.shape for _x in x]}."
             )
-        
+
         # interpret channels as RGBa
-        assert x.ndim == 5 and x.shape[-1] == 4, f"Expexted input to have shape [B, S, W, H, C] with C=4, but got {x.shape}."
+        assert (
+            x.ndim == 5 and x.shape[-1] == 4
+        ), f"Expexted input to have shape [B, S, W, H, C] with C=4, but got {x.shape}."
 
         # paste everything onto an opaque black canvas
         out_rgb = torch.zeros_like(x[:, 0, :, :, :3])
         out_alpha = torch.ones_like(x[:, 0, :, :, 3])
-        out = torch.cat([out_rgb, out_alpha], dim=4)
+        out = torch.cat([out_rgb, out_alpha.unsqueeze(-1)], dim=3)
         for slot in range(x.shape[1]):
             out = self._alpha_add(x[:, slot, :], out)
 
