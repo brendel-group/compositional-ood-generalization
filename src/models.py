@@ -263,7 +263,7 @@ class OccludeAdd(Composition):
     def _add_step(self, a: torch.Tensor, b: torch.Tensor):
         # basically a·step(a) + b·step(-a)
         if self.color_channel:
-            mask = a.abs().mean(-1).unsqueeze(-1) <= 0
+            mask = a.sum(-1).unsqueeze(-1) <= 0
         else:
             mask = a <= 0
         return torch.where(mask, b, a)
@@ -271,7 +271,7 @@ class OccludeAdd(Composition):
     def _add_sigmoid(self, a: torch.Tensor, b: torch.Tensor):
         # soften the step function with a sigmoid here
         if self.color_channel:
-            mask = a.abs().mean(-1).unsqueeze(-1)
+            mask = a.sum(-1).unsqueeze(-1)
         else:
             mask = a
         return a * nn.functional.sigmoid(mask * self.alpha) + b * nn.functional.sigmoid(
@@ -280,7 +280,7 @@ class OccludeAdd(Composition):
 
     def _add_hardsigmoid(self, a: torch.Tensor, b: torch.Tensor):
         if self.color_channel:
-            mask = a.abs().mean(-1).unsqueeze(-1)
+            mask = a.sum(-1).unsqueeze(-1)
         else:
             mask = a
         return a * nn.functional.hardsigmoid(
