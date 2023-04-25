@@ -244,7 +244,7 @@ class Add(Composition):
         return slot_d_out[0]
 
 
-class OccludedAdd(Composition):
+class OccludeAdd(Composition):
     def __init__(
         self,
         clamp: Union[bool, str] = True,
