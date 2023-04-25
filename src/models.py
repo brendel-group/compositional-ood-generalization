@@ -135,7 +135,13 @@ class DeconvDecoder(nn.Sequential):
 
 
 class SpriteworldRenderer(nn.Module):
-    def __init__(self, d_in: int, d_out: List[int], **kwargs):
+    def __init__(
+        self,
+        d_in: int,
+        d_out: List[int],
+        alpha: bool = False,
+        **kwargs,
+    ):
         super().__init__()
         img_h, img_w = d_out[:2]
         if d_out[2] != 3:
@@ -143,6 +149,7 @@ class SpriteworldRenderer(nn.Module):
 
         self.d_in = d_in
         self.d_out = d_out
+        self.alpha = alpha
 
         self.shape_names = ["triangle", "square", "circle"]
 
@@ -164,6 +171,12 @@ class SpriteworldRenderer(nn.Module):
         # converting to numpy first is faster than direct conversion
         out = torch.Tensor(np.array(out))
         out /= 255
+
+        if self.alpha:
+            alpha = torch.where(out.sum(-1).unsqueeze(-1) == 0, 0, 1)
+            out = torch.cat([out, alpha], dim=-1)
+            return out
+
         return out
 
 
@@ -213,7 +226,7 @@ class LinearComposition(Composition):
             x = torch.stack(x, dim=1)
         except RuntimeError:
             raise RuntimeError(
-                f"Linear Composition expects slot with equal output size, \
+                f"Linear Composition expects slots with equal output size, \
                 but got shapes {[_x.shape for _x in x]}."
             )
 
@@ -273,7 +286,7 @@ class OcclusionLinearComposition(Composition):
             x = torch.stack(x, dim=1)
         except RuntimeError:
             raise RuntimeError(
-                f"Linear Composition expects slot with equal output size, \
+                f"Linear Composition expects slots with equal output size, \
                 but got shapes {[_x.shape for _x in x]}."
             )
 
@@ -305,6 +318,54 @@ class OcclusionLinearComposition(Composition):
             out = nn.functional.softplus(out)
 
         return out
+
+    def get_d_out(
+        self, slot_d_out: Union[List[int], List[List[int]]]
+    ) -> Union[int, List[int]]:
+        return slot_d_out[0]
+
+
+class AlphaAdd(Composition):
+    """C for addition with alpha channel."""
+    def __init__(self, clamp: bool = True):
+        super().__init__()
+        self.clamp = clamp
+
+    def _alpha_add(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Add `a` over `b`."""
+        alpha_a = a[:,:,:,-1]
+        alpha_b = b[:,:,:,-1]
+        if self.clamp:
+            alpha_a = alpha_a.clamp(0, 1)
+            alpha_b = alpha_b.clamp(0, 1)
+        alpha = alpha_a + (1 - alpha_a) * alpha_b
+
+        a = a[:,:,:,:3]
+        b = b[:,:,:,:3]
+        rgb = (alpha_a * a + (1 - alpha_a) * alpha_b * b) / alpha
+
+        return torch.cat([rgb, alpha], dim=3)
+
+    def forward(self, x: List[torch.Tensor]) -> torch.Tensor:
+        try:
+            x = torch.stack(x, dim=1)
+        except RuntimeError:
+            raise RuntimeError(
+                f"AlphaAdd Composition expects slots with equal output size, \
+                but got shapes {[_x.shape for _x in x]}."
+            )
+        
+        # interpret channels as RGBa
+        assert x.ndim == 5 and x.shape[-1] == 4, f"Expexted input to have shape [B, S, W, H, C] with C=4, but got {x.shape}."
+
+        # paste everything onto an opaque black canvas
+        out_rgb = torch.zeros_like(x[:, 0, :, :, :3])
+        out_alpha = torch.ones_like(x[:, 0, :, :, 3])
+        out = torch.cat([out_rgb, out_alpha], dim=4)
+        for slot in range(x.shape[1]):
+            out = self._alpha_add(x[:, slot, :], out)
+
+        return out[:, :, :, :3]
 
     def get_d_out(
         self, slot_d_out: Union[List[int], List[List[int]]]
