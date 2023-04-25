@@ -99,6 +99,7 @@ class DeconvMLP(nn.Sequential):
         stride: int = 2,
         padding: int = 1,
         nonlin: nn.Module = nn.ELU(),
+        clamp: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -139,6 +140,8 @@ class DeconvMLP(nn.Sequential):
 
         # [B, W, H, C]
         self.append(Permute((0, 2, 3, 1)))
+        if clamp:
+            self.append(nn.Sigmoid())
 
 
 class SpriteworldRenderer(nn.Module):
@@ -323,6 +326,8 @@ class OccludeAdd(Composition):
             out = nn.functional.relu(out)
         elif self.clamp == "sotfplus":
             out = nn.functional.softplus(out)
+        elif self.clamp == "sigmoid":
+            out = nn.functional.sigmoid(out)
 
         return out
 
