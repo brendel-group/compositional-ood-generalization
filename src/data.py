@@ -10,6 +10,8 @@ from models import CompositionalFunction
 from utils import all_equal
 
 
+# TODO clean up the redundancy in this file, e.g. "gaps" duplicates the same behavior
+# in multiple functions
 def sample_latents(
     dim_per_slot: List[int], mode: str = "random", n_samples: int = None, **kwargs
 ) -> torch.Tensor:
@@ -21,6 +23,8 @@ def sample_latents(
 
     if mode == "random":
         z = _sample_random(n_samples, dim_per_slot)
+    elif mode == "random_gap":
+        z = _sample_random_with_gap(n_samples, dim_per_slot, **kwargs)
     elif mode == "orthogonal":
         z = _sample_orthogonal(n_samples, dim_per_slot)
     elif mode == "orthogonal_gap":
@@ -45,6 +49,41 @@ def _sample_random(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
     return z
 
 
+def _sample_random_with_gap(
+    n_samples: int, dim_per_slot: List[int], gaps: List[Tuple[int, float, float]]
+) -> torch.Tensor:
+    """Sample randomly in unit cube with gaps along any dimension(s) specified by (dim, start, stop)."""
+    total_dim = sum(dim_per_slot)
+    for dim, start, stop in gaps:
+        assert dim in range(
+            total_dim
+        ), f"Gap dimension must be in range({total_dim}), but got {dim}."
+        assert (
+            start < stop
+        ), f"Gap start must be smaller than stop, but got [{start}, {stop}] for dim {dim}."
+        assert (
+            start >= 0 and stop <= 1
+        ), f"Gap edges must be in [0, 1], but got [{start}, {stop}] for dim {dim}."
+        assert stop - start < 1, f"Gap can't span entire range [0, 1] for dim {dim}."
+
+    z = torch.Tensor(0, total_dim)
+
+    while z.shape[0] < n_samples:
+        # first sample normal randomly
+        _z = _sample_random(n_samples, dim_per_slot)
+
+        # then reject points
+        mask = torch.ones(n_samples)
+        for dim, start, stop in gaps:
+            _mask = torch.logical_or(_z[:, dim] < start, _z[:, dim] > stop)
+            mask = torch.logical_and(mask, _mask)
+
+        idx = mask.nonzero().squeeze(1)
+        z = torch.cat([z, _z[idx]])
+
+    return z[:n_samples]
+
+
 def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
     """Sample randomly within each individual slot while keeping all other slots 0."""
     total_dim = sum(dim_per_slot)
@@ -67,7 +106,7 @@ def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
 def _sample_orthogonal_with_gap(
     n_samples: int, dim_per_slot: List[int], gaps: List[Tuple[int, float, float]]
 ) -> torch.Tensor:
-    """Sample Orthogonally with a gap along any dimension(s) specified by (dim, start, stop)."""
+    """Sample Orthogonally with gaps along any dimension(s) specified by (dim, start, stop)."""
     total_dim = sum(dim_per_slot)
     for dim, start, stop in gaps:
         assert dim in range(
@@ -217,7 +256,7 @@ class Dataset(torch.utils.data.TensorDataset):
         transform: Union[callable, str] = None,
         load: Path = None,
         **kwargs,
-    ):  
+    ):
         if load is not None:
             self.tensors = torch.load(load)
 
@@ -285,11 +324,13 @@ class BatchDataLoader(torch.utils.data.DataLoader):
 def get_dataloader(
     generator: nn.Module,
     dev: torch.device,
-    resample: bool=False,
-    batch_size: int=10000,
-    **kwargs
+    resample: bool = False,
+    batch_size: int = 10000,
+    **kwargs,
 ) -> torch.utils.data.DataLoader:
-    assert not (resample and kwargs.get("load", "")), "Dataset path is given, but will not be used with resampling=True."
+    assert not (
+        resample and kwargs.get("load", "")
+    ), "Dataset path is given, but will not be used with resampling=True."
     if resample:
         data_set = InfiniteDataset(generator, dev, **kwargs)
     else:
@@ -310,7 +351,9 @@ def get_dataloaders(
 ) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
-    train_ldr = get_dataloader(generator, dev, batch_size=train_cfg["batch_size"], **train_cfg["sample"])
+    train_ldr = get_dataloader(
+        generator, dev, batch_size=train_cfg["batch_size"], **train_cfg["sample"]
+    )
 
     # TODO refactor this to also use a dict instead of a list
     eval_set_cfgs = eval_cfg["sample"]
@@ -319,7 +362,9 @@ def get_dataloaders(
 
     eval_ldrs = {}
     for eval_set_cfg in eval_set_cfgs:
-        eval_ldr = get_dataloader(generator, dev, batch_size=eval_cfg["batch_size"], **eval_set_cfg)
+        eval_ldr = get_dataloader(
+            generator, dev, batch_size=eval_cfg["batch_size"], **eval_set_cfg
+        )
 
         eval_ldrs[eval_set_cfg["name"]] = eval_ldr
 
@@ -328,7 +373,7 @@ def get_dataloaders(
         for name, cfg in vis_cfg.items():
             vis_ldr = get_dataloader(generator, dev, **cfg)
             vis_ldrs[name] = vis_ldr
-        
+
         return train_ldr, eval_ldrs, vis_ldrs
 
     return train_ldr, eval_ldrs
