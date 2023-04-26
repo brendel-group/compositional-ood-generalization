@@ -348,10 +348,7 @@ def get_dataloaders(
 ) -> Union[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
-    if isinstance(cfg, dict):
-        ldrs = {}
-        for name, _cfg in cfg.items():
-            ldrs[name] = get_dataloader(generator, dev, **_cfg)
-        return ldrs
-    else:
-        return get_dataloader(generator, dev, **cfg)
+    ldrs = {}
+    for name, _cfg in cfg.items():
+        ldrs[name] = get_dataloader(generator, dev, **_cfg)
+    return ldrs

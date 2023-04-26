@@ -177,7 +177,7 @@ def run(**cfg):
 
     D, M = cfg["data"]["D"], cfg["data"]["M"]
 
-    # build data generator
+    # data generator
     phi = []
     for d_in, d_out in zip(D, M):
         model = getattr(models, cfg["data"]["phi"])
@@ -187,9 +187,18 @@ def run(**cfg):
     f = CompositionalFunction(C, phi).to(dev)
     f.eval()
 
+    # model
+    phi_hat = []
+    for d_in, d_out in zip(D, M):
+        model = getattr(models, cfg["model"]["phi"])
+        phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
+    phi_hat = ParallelSlots(phi_hat)
+    f_hat = CompositionalFunction(C, phi_hat).to(dev)
+
     # TODO check whether we need more workers or better background prefetching
 
-    train_ldr = get_dataloaders(f, dev, cfg["train"]["data"])
+    # data and metrics
+    train_ldr = get_dataloader(f, dev, **cfg["train"]["data"])
     criterion = _get_criterion(cfg["train"]["loss"], **cfg["train"]["loss_kwargs"])
 
     if cfg["eval"]:
@@ -198,14 +207,6 @@ def run(**cfg):
 
     if cfg["visualization"]:
         vis_ldrs = get_dataloaders(f, dev, cfg["visualization"]["data"])
-
-    # build model
-    phi_hat = []
-    for d_in, d_out in zip(D, M):
-        model = getattr(models, cfg["model"]["phi"])
-        phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
-    phi_hat = ParallelSlots(phi_hat)
-    f_hat = CompositionalFunction(C, phi_hat).to(dev)
 
     if cfg["wandb"]["watch"]:
         wandb.watch(f_hat, log="all", log_freq=cfg["wandb"]["watch_freq"])
