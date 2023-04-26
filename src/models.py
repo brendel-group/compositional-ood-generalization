@@ -100,6 +100,7 @@ class DeconvMLP(nn.Sequential):
         padding: int = 1,
         nonlin: nn.Module = nn.ELU(),
         clamp: bool = False,
+        batchnorm: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -119,9 +120,13 @@ class DeconvMLP(nn.Sequential):
 
         for _ in range(n_layers - 2):
             self.append(nonlin)
+            if batchnorm:
+                self.append(nn.BatchNorm1d(d_hidden))
             self.append(nn.Linear(d_hidden, d_hidden))
 
         self.append(nonlin)
+        if batchnorm:
+            self.append(nn.BatchNorm1d(d_hidden))
         self.append(nn.Linear(d_hidden, n_channel * 4 * 4))
 
         self.append(nn.Unflatten(1, (n_channel, 4, 4)))
@@ -129,11 +134,15 @@ class DeconvMLP(nn.Sequential):
         # each deconvolution doubles the spatial dimension
         for _ in range(3):
             self.append(nonlin)
+            if batchnorm:
+                self.append(nn.BatchNorm2d(n_channel))
             self.append(
                 nn.ConvTranspose2d(n_channel, n_channel, kernel_size, stride, padding)
             )
 
         self.append(nonlin)
+        if batchnorm:
+            self.append(nn.BatchNorm2d(n_channel))
         self.append(
             nn.ConvTranspose2d(n_channel, d_out[-1], kernel_size, stride, padding)
         )
