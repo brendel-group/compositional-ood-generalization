@@ -250,7 +250,7 @@ class Add(Composition):
 class OccludeAdd(Composition):
     def __init__(
         self,
-        clamp: Union[bool, str] = True,
+        clamp: str = None,
         add: str = "step",
         ste: bool = False,
         alpha: float = 1,
@@ -320,7 +320,7 @@ class OccludeAdd(Composition):
                 out = out_backward
 
         # the output can be restricted to positive numbers
-        if isinstance(self.clamp, bool) and self.clamp:
+        if self.clamp == "clamp":
             out = torch.where(out < 0, 0, out)
         elif self.clamp == "relu":
             out = nn.functional.relu(out)
