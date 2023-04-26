@@ -24,7 +24,20 @@ else:
 dev = torch.device(dev)
 
 
-def _get_metric_dict(metric_names: List[str], d_out: Union[int, List[int]]) -> Dict[str, callable]:
+def _get_criterion(name: str, **kwargs) -> nn.Module:
+    if name == "L1":
+        return nn.L1Loss(**kwargs)
+    elif name in ["MSE", "L2"]:
+        return nn.MSELoss(**kwargs)
+    elif name == "crossentropy":
+        return nn.CrossEntropyLoss(**kwargs)
+    else:
+        raise ValueError(f"Unknown criterion {name}.")
+
+
+def _get_metrics(
+    metric_names: List[str], d_out: Union[int, List[int]]
+) -> Dict[str, callable]:
     if isinstance(d_out, list):
         d_out = prod(d_out)
 
@@ -45,7 +58,7 @@ def _train_epoch(
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
-    criterion: nn.Module = nn.MSELoss(),
+    criterion: nn.Module,
 ):
     model.train()
     loss_accum = 0
@@ -53,7 +66,6 @@ def _train_epoch(
 
     time_start = time.time()
 
-    # TODO consider using tqdm
     for batch, (x, z) in enumerate(loader):
         x = x.to(dev)
         z = z.to(dev)
@@ -132,7 +144,7 @@ def visualize_mse_on_grid(
 
     all_mse = torch.Tensor().to(dev)
     all_z = torch.Tensor().to(dev)
-    for (x, z) in loader:
+    for x, z in loader:
         x = x.to(dev).flatten(1)
         z = z.to(dev)
         all_z = torch.cat([all_z, z], dim=0)
@@ -157,7 +169,7 @@ def run(**cfg):
     wandb.init(project="COOD", config=cfg)
 
     # TODO only set this if input/output has constant size, otherwise graph is optimized
-    #   each time
+    # each time
     # torch.backends.cudnn.benchmark = True
     random.seed(cfg["seed"])
     np.random.seed(cfg["seed"])
@@ -165,6 +177,7 @@ def run(**cfg):
 
     D, M = cfg["data"]["D"], cfg["data"]["M"]
 
+    # build data generator
     phi = []
     for d_in, d_out in zip(D, M):
         model = getattr(models, cfg["data"]["phi"])
@@ -176,8 +189,17 @@ def run(**cfg):
 
     # TODO check whether we need more workers or better background prefetching
 
-    train_ldr, eval_ldrs, vis_ldrs = get_dataloaders(f, dev, cfg["train"], cfg["eval"], cfg["visualization"])
+    train_ldr = get_dataloaders(f, dev, cfg["train"]["data"])
+    criterion = _get_criterion(cfg["train"]["loss"], **cfg["train"]["loss_kwargs"])
 
+    if cfg["eval"]:
+        eval_ldrs = get_dataloaders(f, dev, cfg["eval"]["data"])
+        eval_metrics = _get_metrics(cfg["eval"]["metrics"], f_hat.d_out)
+
+    if cfg["visualization"]:
+        vis_ldrs = get_dataloaders(f, dev, cfg["visualization"]["data"])
+
+    # build model
     phi_hat = []
     for d_in, d_out in zip(D, M):
         model = getattr(models, cfg["model"]["phi"])
@@ -192,42 +214,46 @@ def run(**cfg):
 
     optimizer = getattr(torch.optim, cfg["train"]["optimizer"])(
         f_hat.parameters(),
-        lr=cfg["train"]["lr"],
-        weight_decay=cfg["train"]["weight_decay"],
         **cfg["train"]["optimizer_kwargs"],
     )
     scheduler = getattr(torch.optim.lr_scheduler, cfg["train"]["scheduler"])(
         optimizer, **cfg["train"]["scheduler_kwargs"]
     )
 
+    # keep track of scores to save model
     best_scores = {score: float("infg") for score in cfg["eval"]["save_scores"]}
 
-    # TODO consider using tqdm
     for epoch in range(cfg["train"]["epochs"]):
         log = {}
 
-        loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer)
+        # train
+        loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer, criterion)
         log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
-        if epoch > 0 and epoch % cfg["eval"]["freq"] == 0:
-            scores = evaluate(
-                f_hat, eval_ldrs, _get_metric_dict(cfg["eval"]["metrics"], f_hat.d_out)
-            )
-            log.update(scores)
+        if epoch > 0:
+            # evaluate
+            if cfg["eval"] and epoch % cfg["eval"]["freq"] == 0:
+                scores = evaluate(f_hat, eval_ldrs, eval_metrics)
+                log.update(scores)
 
-            for name, val in best_scores:
-                if scores[name] < val:
-                    scores[name] = val
-                    torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
+                # save best models
+                for name, val in best_scores:
+                    if scores[name] < val:
+                        scores[name] = val
+                        torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
 
-            if cfg["visualization"]:
-                fig = visualize_mse_on_grid(f_hat, vis_ldrs["heatmap"], D)
-                log.update({"heatmap": wandb.Image(fig)})
-                plt.close(fig)
-
-                fig = visualize_reconstruction(f_hat, vis_ldrs["reconstruction"])
-                log.update({"reconstruction": wandb.Image(fig)})
-                plt.close(fig)
+            # visualize
+            if cfg["visualization"] and epoch % cfg["visualization"]["freq"] == 0:
+                for vis_name, vis_cfg in cfg["visualization"]["data"].items():
+                    vis_type = vis_cfg["type"]
+                    if vis_type == "heatmap":
+                        fig = visualize_mse_on_grid(f_hat, vis_ldrs[vis_name], D)
+                    elif vis_type == "reconstruction":
+                        fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name])
+                    else:
+                        raise ValueError(f"Unsupported visualization type {vis_type}.")
+                    log.update({vis_name: wandb.Image(fig)})
+                    plt.close(fig)
 
         # call only once to get the correct number of steps in the interface
         wandb.log(log)

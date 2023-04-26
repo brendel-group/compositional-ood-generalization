@@ -1,3 +1,4 @@
+import warnings
 from math import sqrt
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
@@ -258,6 +259,7 @@ class Dataset(torch.utils.data.TensorDataset):
         **kwargs,
     ):
         if load is not None:
+            warnings.warn("Loading pregenerated dataset, ignoring generator settings.")
             self.tensors = torch.load(load)
 
         else:
@@ -328,52 +330,28 @@ def get_dataloader(
     batch_size: int = 10000,
     **kwargs,
 ) -> torch.utils.data.DataLoader:
-    assert not (
-        resample and kwargs.get("load", "")
-    ), "Dataset path is given, but will not be used with resampling=True."
     if resample:
+        assert (
+            "load" not in kwargs
+        ), "Resampling is incompatible with pregenerated data."
         data_set = InfiniteDataset(generator, dev, **kwargs)
     else:
         data_set = Dataset(generator, dev, **kwargs)
 
-    data_ldr = BatchDataLoader(data_set, batch_size)
-    return data_ldr
+    return BatchDataLoader(data_set, batch_size)
 
 
-# TODO this function should be simplified to just return eval/vis loaders in one dict
-# with the option in the config to not evaluate on each loader or something similar
 def get_dataloaders(
     generator: nn.Module,
     dev: torch.device,
-    train_cfg: Dict[str, Any],
-    eval_cfg: Dict[str, Any],
-    vis_cfg: Dict[str, Any] = None,
-) -> Tuple[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
+    cfg: Dict[str, Any],
+) -> Union[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
-    train_ldr = get_dataloader(
-        generator, dev, batch_size=train_cfg["batch_size"], **train_cfg["sample"]
-    )
-
-    # TODO refactor this to also use a dict instead of a list
-    eval_set_cfgs = eval_cfg["sample"]
-    if not isinstance(eval_set_cfgs, list):
-        eval_set_cfgs = [eval_set_cfgs]
-
-    eval_ldrs = {}
-    for eval_set_cfg in eval_set_cfgs:
-        eval_ldr = get_dataloader(
-            generator, dev, batch_size=eval_cfg["batch_size"], **eval_set_cfg
-        )
-
-        eval_ldrs[eval_set_cfg["name"]] = eval_ldr
-
-    if vis_cfg is not None:
-        vis_ldrs = {}
-        for name, cfg in vis_cfg.items():
-            vis_ldr = get_dataloader(generator, dev, **cfg)
-            vis_ldrs[name] = vis_ldr
-
-        return train_ldr, eval_ldrs, vis_ldrs
-
-    return train_ldr, eval_ldrs
+    if isinstance(cfg, dict):
+        ldrs = {}
+        for name, _cfg in cfg.items():
+            ldrs[name] = get_dataloader(generator, dev, **_cfg)
+        return ldrs
+    else:
+        return get_dataloader(generator, dev, **cfg)

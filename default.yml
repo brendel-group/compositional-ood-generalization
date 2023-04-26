@@ -13,50 +13,55 @@ model:
   phi_kwargs: {}
 train:
   epochs: 5000
-  sample:
+  data:
     mode: random
     n_samples: 10000
     resample: True
-  batch_size: 512
-  lr: 0.001
+    batch_size: 512
+  loss: MSE
+  loss_kwargs: {}
+  optimizer: AdamW
+  optimizer_kwargs:
+    lr: 0.001
+    weight_decay: 1e-5
   scheduler: CosineAnnealingLR
   scheduler_kwargs:
     T_max: 1000
     eta_min: 1e-5
-  optimizer: AdamW
-  optimizer_kwargs: {}
-  weight_decay: 1e-5
 wandb:
   watch: False
   watch_freq: 50
 eval:
   freq: 100
-  sample:
-    - name: all
+  metrics: [R2Score, MSE]
+  save_scores: []
+  data:
+    all:
       mode: random
       n_samples: 10000
       resample: False
       transform: scale_latents
-    - name: ID
+      batch_size: 1000
+    ID:
       mode: orthogonal
       n_samples: 10000
       resample: False
       transform: scale_latents
-  batch_size: 1000
-  metrics:
-    - R2Score
-    - MSE
-  save_scores: []
+      batch_size: 1000
 visualization:
-  heatmap:
-    mode: grid
-    n_samples: 10000
-    resample: False
-    transform: scale_latents
-    batch_size: 1000
-  reconstruction:
-    mode: random
-    n_samples: 10000
-    resample: False
-    transform: scale_latents
-    batch_size: 5
+  freq: 100
+  data:
+    heatmap:
+      type: heatmap
+      mode: grid
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+    reconstruction:
+      type: reconstruction
+      mode: random
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 5
