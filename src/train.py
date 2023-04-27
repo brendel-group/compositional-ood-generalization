@@ -57,7 +57,9 @@ def objectness_loss(input: torch.Tensor) -> torch.Tensor:
     return objectness_score(input, pairwise_dists)
 
 
-def objectness_loss_batched(input: torch.Tensor, pairwise_dists: torch.Tensor = None, batch_size: int = 16) -> torch.Tensor:
+def objectness_loss_batched(
+    input: torch.Tensor, pairwise_dists: torch.Tensor = None, batch_size: int = 16
+) -> torch.Tensor:
     inputs = input.split(ceil(input.shape[0] / batch_size), dim=0)
     if pairwise_dists is None:
         pairwise_dists = get_pairwise_dists(input.shape[1], input.shape[2])
@@ -78,7 +80,9 @@ class ObjectnessLoss(nn.Module):
         return objectness_loss_batched(input, self.pairwise_dists, self.batch_size)
 
 
-def _get_criterion(name: str, d_out: List[int], alpha: float = 1, **kwargs) -> nn.Module:
+def _get_criterion(
+    name: str, d_out: List[int], alpha: float = 1, **kwargs
+) -> nn.Module:
     if name == "L1":
         return nn.L1Loss(**kwargs)
     elif name in ["MSE", "L2"]:
@@ -263,17 +267,19 @@ def run(**cfg):
             phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
     phi_hat = ParallelSlots(phi_hat)
     f_hat = CompositionalFunction(C, phi_hat).to(dev)
-    
+
     checkpoint = cfg["train"].get("checkpoint", None)
     if checkpoint is not None:
         f_hat.load_state_dict(torch.load(checkpoint))
 
     # TODO check whether we need background prefetching
-    ldr_kwargs = dict(num_workers = 8, pin_memory=True if dev == "cuda:0" else False)
+    ldr_kwargs = dict(num_workers=8, pin_memory=True if dev == "cuda:0" else False)
 
     # data and metrics
     train_ldr = get_dataloader(f, dev, **cfg["train"]["data"], **ldr_kwargs)
-    criterion = _get_criterion(cfg["train"]["loss"], f_hat.d_out, **cfg["train"]["loss_kwargs"])
+    criterion = _get_criterion(
+        cfg["train"]["loss"], f_hat.d_out, **cfg["train"]["loss_kwargs"]
+    )
 
     do_eval = bool(cfg.get("eval", {}))
     if do_eval:
@@ -284,8 +290,10 @@ def run(**cfg):
         save_scores = cfg["eval"].get("save_scores", [])
         best_scores = {}
         for name, mode in save_scores.items():
-            assert isinstance(mode, float) or mode in ["min", "max"], \
-                f"Save score must be a float or 'min'/'max', but got {mode}"
+            assert isinstance(mode, float) or mode in [
+                "min",
+                "max",
+            ], f"Save score must be a float or 'min'/'max', but got {mode}"
             best_scores[name] = float("-inf") if mode == "max" else float("inf")
 
     do_vis = bool(cfg.get("visualization", {}))
@@ -312,46 +320,51 @@ def run(**cfg):
         loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer, criterion)
         log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
-        if epoch > 0:
-            # evaluate
-            if do_eval and epoch % cfg["eval"]["freq"] == 0:
-                scores = evaluate(f_hat, eval_ldrs, eval_metrics)
-                log.update(scores)
+        scheduler.step()
 
-                # save best models
-                # TODO refactor this
-                for name, mode in save_scores.items():
-                    val = scores[name]
-                    current_best = best_scores[name]
-                    if (mode == "min" and val < current_best) \
-                        or (mode == "max" and val > current_best):
-                        best_scores[name] = val
+        # don't evaluate in first epoch
+        if epoch == 0:
+            wandb.log(log)
+            continue
+
+        # evaluate
+        if do_eval and epoch % cfg["eval"]["freq"] == 0:
+            scores = evaluate(f_hat, eval_ldrs, eval_metrics)
+            log.update(scores)
+
+            # save best models
+            # TODO refactor this
+            for name, mode in save_scores.items():
+                val = scores[name]
+                current_best = best_scores[name]
+                if (mode == "min" and val < current_best) or (
+                    mode == "max" and val > current_best
+                ):
+                    best_scores[name] = val
+                    torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
+                    print(f"Saved {name} in epoch {epoch}.")
+                elif isinstance(mode, float):
+                    dist = abs(val - mode)
+                    if dist < current_best:
+                        best_scores[name] = dist
                         torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
                         print(f"Saved {name} in epoch {epoch}.")
-                    elif isinstance(mode, float):
-                        dist = abs(val - mode)
-                        if dist < current_best:
-                            best_scores[name] = dist
-                            torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
-                            print(f"Saved {name} in epoch {epoch}.")
 
-            # visualize
-            if do_vis and epoch % cfg["visualization"]["freq"] == 0:
-                for vis_name, vis_cfg in cfg["visualization"]["data"].items():
-                    vis_type = vis_cfg["type"]
-                    if vis_type == "heatmap":
-                        fig = visualize_mse_on_grid(f_hat, vis_ldrs[vis_name], D)
-                    elif vis_type == "reconstruction":
-                        fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name])
-                    else:
-                        raise ValueError(f"Unsupported visualization type {vis_type}.")
-                    log.update({vis_name: wandb.Image(fig)})
-                    plt.close(fig)
+        # visualize
+        if do_vis and epoch % cfg["visualization"]["freq"] == 0:
+            for vis_name, vis_cfg in cfg["visualization"]["data"].items():
+                vis_type = vis_cfg["type"]
+                if vis_type == "heatmap":
+                    fig = visualize_mse_on_grid(f_hat, vis_ldrs[vis_name], D)
+                elif vis_type == "reconstruction":
+                    fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name])
+                else:
+                    raise ValueError(f"Unsupported visualization type {vis_type}.")
+                log.update({vis_name: wandb.Image(fig)})
+                plt.close(fig)
 
         # call only once to get the correct number of steps in the interface
         wandb.log(log)
-
-        scheduler.step()
 
     torch.save(f_hat.state_dict(), save_dir / "latest.pt")
 
