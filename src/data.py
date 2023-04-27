@@ -27,7 +27,7 @@ def sample_latents(
     elif mode == "random_gap":
         z = _sample_random_with_gap(n_samples, dim_per_slot, **kwargs)
     elif mode == "orthogonal":
-        z = _sample_orthogonal(n_samples, dim_per_slot)
+        z = _sample_orthogonal(n_samples, dim_per_slot, **kwargs)
     elif mode == "orthogonal_gap":
         z = _sample_orthogonal_with_gap(n_samples, dim_per_slot, **kwargs)
     elif mode == "diagonal":
@@ -85,27 +85,46 @@ def _sample_random_with_gap(
     return z[:n_samples]
 
 
-def _sample_orthogonal(n_samples: int, dim_per_slot: List[int]) -> torch.Tensor:
-    """Sample randomly within each individual slot while keeping all other slots 0."""
+def _sample_orthogonal(
+    n_samples: int,
+    dim_per_slot: List[int],
+    planes: List[Tuple[int, List[float]]] = None,
+) -> torch.Tensor:
+    """Sample randomly within a slot, while fixing the other slots on specific coordinates.
+
+    Specify the planes as (slot to sample randomly, [coordinates for each other latent])
+    """
     total_dim = sum(dim_per_slot)
 
-    # sample randomly within each slot
-    _z = torch.rand(n_samples, total_dim)
+    # default to planes through the origin
+    if planes is None:
+        planes = []
+        for slot, dim in enumerate(dim_per_slot):
+            planes.append((slot, [0] * (total_dim - dim)))
 
-    # for each final sample, randomly pick one slot, all other slots are 0
-    slots = torch.randint(len(dim_per_slot), (n_samples, 1)).squeeze()
+    # collect points on each plane
+    z = torch.Tensor(0, total_dim)
+    for slot, coords in planes:
+        remaining_dims = total_dim - dim_per_slot[slot]
+        assert (
+            len(coords) == remaining_dims
+        ), f"Plane needs {remaining_dims} latents, but only got {len(coords)}."
 
-    z = torch.zeros(n_samples, total_dim)
-    for i, slot in enumerate(slots):
-        start = sum(dim_per_slot[:slot])
-        stop = sum(dim_per_slot[: slot + 1])
-        z[i, start:stop] = _z[i, start:stop]
+        # only one slot is chosen randomly, the others are specified
+        z_slot = torch.rand(n_samples, dim_per_slot[slot])
+        z_rest = torch.Tensor(coords).view(1, -1).repeat(n_samples, 1)
+        start_dim = sum(dim_per_slot[:slot])
+        _z = torch.cat([z_rest[:, :start_dim], z_slot, z_rest[:, start_dim:]], dim=1)
+        z = torch.cat([z, _z])
 
-    return z
+    return z[torch.randperm(z.shape[0])][:n_samples]
 
 
 def _sample_orthogonal_with_gap(
-    n_samples: int, dim_per_slot: List[int], gaps: List[Tuple[int, float, float]]
+    n_samples: int,
+    dim_per_slot: List[int],
+    gaps: List[Tuple[int, float, float]],
+    **kwargs,
 ) -> torch.Tensor:
     """Sample Orthogonally with gaps along any dimension(s) specified by (dim, start, stop)."""
     total_dim = sum(dim_per_slot)
@@ -125,7 +144,7 @@ def _sample_orthogonal_with_gap(
 
     while z.shape[0] < n_samples:
         # first sample normal orthogonal
-        _z = _sample_orthogonal(n_samples, dim_per_slot)
+        _z = _sample_orthogonal(n_samples, dim_per_slot, **kwargs)
 
         # then reject points
         mask = torch.ones(n_samples)
