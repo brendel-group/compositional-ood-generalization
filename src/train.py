@@ -25,7 +25,40 @@ else:
 dev = torch.device(dev)
 
 
-def _get_criterion(name: str, **kwargs) -> nn.Module:
+def objectness_loss(input: torch.Tensor) -> torch.Tensor:
+    batch_size, w, h, _ = input.shape
+
+    # create pixel coordinates on grid
+    x = torch.arange(w).view(1, -1).repeat(h, 1)
+    y = torch.arange(h).view(-1, 1).repeat(1, w)
+    grid = torch.stack([x, y], dim=0).unsqueeze(0)
+
+    # compute pairwise distances between all pixels
+    pairwise_diff = grid.view(1, 2, -1).unsqueeze(-1) - grid.view(1, 2, 1, -1)
+    pairwise_dist = torch.sqrt(torch.sum(pairwise_diff**2, dim=1))
+
+    # normalize input
+    input = input.abs().sum(-1)
+    input = (input - input.min()) / (input.max() - input.min())
+    print(input.shape)
+
+    # calculate weighted pairwise distance
+    weighted_pairwise_dist = (
+        pairwise_dist * input.view(batch_size, -1, 1) * input.view(batch_size, 1, -1)
+    )
+
+    return weighted_pairwise_dist.mean()
+
+
+class ObjectnessLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input):
+        return objectness_loss(input)
+
+
+def _get_criterion(name: str, alpha: float = 1, **kwargs) -> nn.Module:
     if name == "L1":
         return nn.L1Loss(**kwargs)
     elif name in ["MSE", "L2"]:
@@ -33,7 +66,13 @@ def _get_criterion(name: str, **kwargs) -> nn.Module:
     elif name == "crossentropy":
         return nn.CrossEntropyLoss(**kwargs)
     elif name == "MSE+sparsity":
-        return lambda y, y_hat: nn.functional.mse_loss(y, y_hat) + 0.00001 * torch.norm(y_hat, p=1)
+        return lambda y, y_hat: nn.functional.mse_loss(y, y_hat) + alpha * torch.norm(
+            y_hat, p=1
+        )
+    elif name == "MSE+objectness":
+        return lambda y, y_hat: nn.functional.mse_loss(
+            y, y_hat
+        ) + alpha * objectness_loss(y_hat)
     else:
         raise ValueError(f"Unknown criterion {name}.")
 
@@ -193,8 +232,9 @@ def run(**cfg):
     # model
     model = getattr(models, cfg["model"]["phi"])
     if cfg["model"]["reuse_phi"]:
-        assert all_equal(D) and all_equal(M), \
-            f"Can't reuse modules for slots with different inputs/outputs {D, M}."
+        assert all_equal(D) and all_equal(
+            M
+        ), f"Can't reuse modules for slots with different inputs/outputs {D, M}."
         phi_hat = [model(D[0], M[0], **cfg["model"]["phi_kwargs"])] * len(D)
     else:
         phi_hat = []
