@@ -44,22 +44,16 @@ eval:
       resample: False
       transform: scale_latents
       batch_size: 1000
-    ID:
-      mode: orthogonal
-      n_samples: 10000
-      resample: False
-      transform: scale_latents
-      batch_size: 1000
 visualization:
   freq: 100
   data:
-    heatmap:
-      type: heatmap
-      mode: grid
-      n_samples: 10000
-      resample: False
-      transform: scale_latents
-      batch_size: 1000
+    # heatmap:
+    #   type: heatmap
+    #   mode: grid
+    #   n_samples: 10000
+    #   resample: False
+    #   transform: scale_latents
+    #   batch_size: 1000
     reconstruction:
       type: reconstruction
       mode: random

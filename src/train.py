@@ -328,7 +328,7 @@ def run(**cfg):
                         best_scores[name] = val
                         torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
                         print(f"Saved {name} in epoch {epoch}.")
-                    else:
+                    elif isinstance(mode, float):
                         dist = abs(val - mode)
                         if dist < current_best:
                             best_scores[name] = dist

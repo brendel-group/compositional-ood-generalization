@@ -386,7 +386,7 @@ class AlphaAdd(Composition):
         out_rgb = torch.zeros_like(x[:, 0, :, :, :3])
         out_alpha = torch.ones_like(x[:, 0, :, :, 3])
         out = torch.cat([out_rgb, out_alpha.unsqueeze(-1)], dim=3)
-        for slot in range(x.shape[1]):
+        for slot in reversed(range(x.shape[1])):
             out = self._alpha_add(x[:, slot, :], out)
 
         return out[:, :, :, :3]
