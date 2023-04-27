@@ -46,7 +46,7 @@ eval:
       batch_size: 1000
 visualization:
   freq: 100
-  data:
+  # data:
     # heatmap:
     #   type: heatmap
     #   mode: grid
@@ -54,10 +54,10 @@ visualization:
     #   resample: False
     #   transform: scale_latents
     #   batch_size: 1000
-    reconstruction:
-      type: reconstruction
-      mode: random
-      n_samples: 10000
-      resample: False
-      transform: scale_latents
-      batch_size: 5
+    # reconstruction:
+    #   type: reconstruction
+    #   mode: random
+    #   n_samples: 10000
+    #   resample: False
+    #   transform: scale_latents
+    #   batch_size: 5
