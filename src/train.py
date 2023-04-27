@@ -314,7 +314,7 @@ def run(**cfg):
                 for name, val in best_scores.items():
                     if scores[name] < val:
                         scores[name] = val
-                        torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
+                        torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
 
             # visualize
             if do_vis and epoch % cfg["visualization"]["freq"] == 0:
