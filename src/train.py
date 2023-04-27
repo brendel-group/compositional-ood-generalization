@@ -27,8 +27,8 @@ dev = torch.device(dev)
 
 def get_pairwise_dists(w: int, h: int) -> torch.Tensor:
     # create pixel coordinates on grid
-    x = torch.arange(w).view(1, -1).repeat(h, 1).to(dev)
-    y = torch.arange(h).view(-1, 1).repeat(1, w).to(dev)
+    x = torch.arange(w, device=dev).view(1, -1).repeat(h, 1)
+    y = torch.arange(h, device=dev).view(-1, 1).repeat(1, w)
     grid = torch.stack([x, y], dim=0).unsqueeze(0)
 
     # compute pairwise distances between all pixels
@@ -69,9 +69,9 @@ def objectness_loss_batched(input: torch.Tensor, pairwise_dists: torch.Tensor = 
 
 
 class ObjectnessLoss(nn.Module):
-    def __init__(self, size: Tuple[int, int], batch_size: int = 16):
+    def __init__(self, size: Tuple[int, int] = None, batch_size: int = 16):
         super().__init__()
-        self.pairwise_dists = get_pairwise_dists(*size)
+        self.pairwise_dists = get_pairwise_dists(*size) if size is not None else None
         self.batch_size = batch_size
 
     def forward(self, input):
@@ -230,9 +230,10 @@ def run(**cfg):
 
     wandb.init(project="COOD", config=cfg)
 
-    # TODO only set this if input/output has constant size, otherwise graph is optimized
+    # NOTE only set this if input/output has constant size, otherwise graph is optimized
     # each time
-    # torch.backends.cudnn.benchmark = True
+    if cfg["train"]["use_cudnn_backend"]:
+        torch.backends.cudnn.benchmark = True
     random.seed(cfg["seed"])
     np.random.seed(cfg["seed"])
     torch.manual_seed(cfg["seed"])
@@ -263,23 +264,30 @@ def run(**cfg):
     phi_hat = ParallelSlots(phi_hat)
     f_hat = CompositionalFunction(C, phi_hat).to(dev)
 
-    # TODO check whether we need more workers or better background prefetching
+    # TODO check whether we need background prefetching
+    ldr_kwargs = dict(num_workers = 8, pin_memory=True if dev == "cuda:0" else False)
 
     # data and metrics
-    train_ldr = get_dataloader(f, dev, **cfg["train"]["data"])
+    train_ldr = get_dataloader(f, dev, **cfg["train"]["data"], **ldr_kwargs)
     criterion = _get_criterion(cfg["train"]["loss"], f_hat.d_out, **cfg["train"]["loss_kwargs"])
 
-    if cfg["eval"]:
-        eval_ldrs = get_dataloaders(f, dev, cfg["eval"]["data"])
+    do_eval = bool(cfg.get("eval", {}))
+    if do_eval:
+        eval_ldrs = get_dataloaders(f, dev, cfg["eval"]["data"], **ldr_kwargs)
         eval_metrics = _get_metrics(cfg["eval"]["metrics"], f_hat.d_out)
 
-    if cfg["visualization"]:
-        vis_ldrs = get_dataloaders(f, dev, cfg["visualization"]["data"])
+        # keep track of scores to save model
+        save_scores = cfg["eval"].get("save_scores", [])
+        best_scores = {score: float("inf") for score in save_scores}
+
+    do_vis = bool(cfg.get("visualization", {}))
+    if do_vis:
+        vis_ldrs = get_dataloaders(f, dev, cfg["visualization"]["data"], **ldr_kwargs)
 
     if cfg["wandb"]["watch"]:
         wandb.watch(f_hat, log="all", log_freq=cfg["wandb"]["watch_freq"])
 
-    # TODO consider setting up multi-GPU training
+    # TODO consider setting up multi-GPU training (DistributedDataParallel)
 
     optimizer = getattr(torch.optim, cfg["train"]["optimizer"])(
         f_hat.parameters(),
@@ -288,9 +296,6 @@ def run(**cfg):
     scheduler = getattr(torch.optim.lr_scheduler, cfg["train"]["scheduler"])(
         optimizer, **cfg["train"]["scheduler_kwargs"]
     )
-
-    # keep track of scores to save model
-    best_scores = {score: float("inf") for score in cfg["eval"]["save_scores"]}
 
     for epoch in range(cfg["train"]["epochs"]):
         log = {}
@@ -301,7 +306,7 @@ def run(**cfg):
 
         if epoch > 0:
             # evaluate
-            if cfg["eval"] and epoch % cfg["eval"]["freq"] == 0:
+            if do_eval and epoch % cfg["eval"]["freq"] == 0:
                 scores = evaluate(f_hat, eval_ldrs, eval_metrics)
                 log.update(scores)
 
@@ -312,7 +317,7 @@ def run(**cfg):
                         torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
 
             # visualize
-            if cfg["visualization"] and epoch % cfg["visualization"]["freq"] == 0:
+            if do_vis and epoch % cfg["visualization"]["freq"] == 0:
                 for vis_name, vis_cfg in cfg["visualization"]["data"].items():
                     vis_type = vis_cfg["type"]
                     if vis_type == "heatmap":

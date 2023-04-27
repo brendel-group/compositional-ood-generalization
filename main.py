@@ -7,6 +7,8 @@ from src.utils import load_config, deep_update
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    # TODO switch the whole config to Hydra
+
     parser.add_argument(
         "-c",
         "--config",
