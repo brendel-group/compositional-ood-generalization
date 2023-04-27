@@ -315,11 +315,12 @@ class InfiniteDataset(torch.utils.data.IterableDataset):
 
 
 class BatchDataLoader(torch.utils.data.DataLoader):
-    def __init__(self, dataset: torch.utils.data.Dataset, batch_size: int):
+    def __init__(self, dataset: torch.utils.data.Dataset, batch_size: int, **kwargs):
         super().__init__(
             dataset,
             batch_size=batch_size,
             shuffle=None if isinstance(dataset, InfiniteDataset) else True,
+            **kwargs,
         )
 
 
@@ -345,10 +346,11 @@ def get_dataloaders(
     generator: nn.Module,
     dev: torch.device,
     cfg: Dict[str, Any],
+    **kwargs,
 ) -> Union[torch.utils.data.DataLoader, Dict[str, torch.utils.data.DataLoader]]:
     assert not generator.training, "Generator has to be in eval() mode!"
 
     ldrs = {}
     for name, _cfg in cfg.items():
-        ldrs[name] = get_dataloader(generator, dev, **_cfg)
+        ldrs[name] = get_dataloader(generator, dev, **_cfg, **kwargs)
     return ldrs

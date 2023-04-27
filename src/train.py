@@ -1,7 +1,7 @@
 import datetime
 import random
 import time
-from math import prod
+from math import ceil, prod
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
@@ -9,14 +9,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
+import wandb
 from torchmetrics import MeanSquaredError, Metric, R2Score
 
 import models
-import wandb
 from data import get_dataloader, get_dataloaders, sample_latents
 from models import *
-from vis import visualize_score_heatmaps, visualize_output_v_target
 from utils import all_equal
+from vis import visualize_output_v_target, visualize_score_heatmaps
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -25,22 +25,24 @@ else:
 dev = torch.device(dev)
 
 
-def objectness_loss(input: torch.Tensor) -> torch.Tensor:
-    batch_size, w, h, _ = input.shape
-
+def get_pairwise_dists(w: int, h: int) -> torch.Tensor:
     # create pixel coordinates on grid
-    x = torch.arange(w).view(1, -1).repeat(h, 1)
-    y = torch.arange(h).view(-1, 1).repeat(1, w)
+    x = torch.arange(w).view(1, -1).repeat(h, 1).to(dev)
+    y = torch.arange(h).view(-1, 1).repeat(1, w).to(dev)
     grid = torch.stack([x, y], dim=0).unsqueeze(0)
 
     # compute pairwise distances between all pixels
     pairwise_diff = grid.view(1, 2, -1).unsqueeze(-1) - grid.view(1, 2, 1, -1)
     pairwise_dist = torch.sqrt(torch.sum(pairwise_diff**2, dim=1))
+    return pairwise_dist
+
+
+def objectness_score(input: torch.Tensor, pairwise_dist: torch.Tensor) -> torch.Tensor:
+    batch_size = input.shape[0]
 
     # normalize input
     input = input.abs().sum(-1)
     input = (input - input.min()) / (input.max() - input.min())
-    print(input.shape)
 
     # calculate weighted pairwise distance
     weighted_pairwise_dist = (
@@ -50,15 +52,33 @@ def objectness_loss(input: torch.Tensor) -> torch.Tensor:
     return weighted_pairwise_dist.mean()
 
 
+def objectness_loss(input: torch.Tensor) -> torch.Tensor:
+    pairwise_dists = get_pairwise_dists(input.shape[1], input.shape[2])
+    return objectness_score(input, pairwise_dists)
+
+
+def objectness_loss_batched(input: torch.Tensor, pairwise_dists: torch.Tensor = None, batch_size: int = 16) -> torch.Tensor:
+    inputs = input.split(ceil(input.shape[0] / batch_size), dim=0)
+    if pairwise_dists is None:
+        pairwise_dists = get_pairwise_dists(input.shape[1], input.shape[2])
+
+    loss = 0
+    for input in inputs:
+        loss += objectness_score(input, pairwise_dists)
+    return loss
+
+
 class ObjectnessLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, size: Tuple[int, int], batch_size: int = 16):
         super().__init__()
+        self.pairwise_dists = get_pairwise_dists(*size)
+        self.batch_size = batch_size
 
     def forward(self, input):
-        return objectness_loss(input)
+        return objectness_loss_batched(input, self.pairwise_dists, self.batch_size)
 
 
-def _get_criterion(name: str, alpha: float = 1, **kwargs) -> nn.Module:
+def _get_criterion(name: str, d_out: List[int], alpha: float = 1, **kwargs) -> nn.Module:
     if name == "L1":
         return nn.L1Loss(**kwargs)
     elif name in ["MSE", "L2"]:
@@ -247,7 +267,7 @@ def run(**cfg):
 
     # data and metrics
     train_ldr = get_dataloader(f, dev, **cfg["train"]["data"])
-    criterion = _get_criterion(cfg["train"]["loss"], **cfg["train"]["loss_kwargs"])
+    criterion = _get_criterion(cfg["train"]["loss"], f_hat.d_out, **cfg["train"]["loss_kwargs"])
 
     if cfg["eval"]:
         eval_ldrs = get_dataloaders(f, dev, cfg["eval"]["data"])
