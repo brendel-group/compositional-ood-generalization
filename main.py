@@ -29,5 +29,4 @@ if __name__ == "__main__":
         cfg = deep_update(cfg, cfg_update)
 
     # TODO add ability to update config with CLI arguments
-
     run(**cfg)

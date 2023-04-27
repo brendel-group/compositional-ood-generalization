@@ -263,6 +263,10 @@ def run(**cfg):
             phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
     phi_hat = ParallelSlots(phi_hat)
     f_hat = CompositionalFunction(C, phi_hat).to(dev)
+    
+    checkpoint = cfg["train"].get("checkpoint", None)
+    if checkpoint is not None:
+        f_hat.load_state_dict(torch.load(checkpoint))
 
     # TODO check whether we need background prefetching
     ldr_kwargs = dict(num_workers = 8, pin_memory=True if dev == "cuda:0" else False)
@@ -278,7 +282,11 @@ def run(**cfg):
 
         # keep track of scores to save model
         save_scores = cfg["eval"].get("save_scores", [])
-        best_scores = {score: float("inf") for score in save_scores}
+        best_scores = {}
+        for name, mode in save_scores.items():
+            assert isinstance(mode, float) or mode in ["min", "max"], \
+                f"Save score must be a float or 'min'/'max', but got {mode}"
+            best_scores[name] = float("-inf") if mode == "max" else float("inf")
 
     do_vis = bool(cfg.get("visualization", {}))
     if do_vis:
@@ -311,10 +319,21 @@ def run(**cfg):
                 log.update(scores)
 
                 # save best models
-                for name, val in best_scores.items():
-                    if scores[name] < val:
-                        scores[name] = val
+                # TODO refactor this
+                for name, mode in save_scores.items():
+                    val = scores[name]
+                    current_best = best_scores[name]
+                    if (mode == "min" and val < current_best) \
+                        or (mode == "max" and val > current_best):
+                        best_scores[name] = val
                         torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
+                        print(f"Saved {name} in epoch {epoch}.")
+                    else:
+                        dist = abs(val - mode)
+                        if dist < current_best:
+                            best_scores[name] = dist
+                            torch.save(f_hat.state_dict(), save_dir / f"best_{name}.pt")
+                            print(f"Saved {name} in epoch {epoch}.")
 
             # visualize
             if do_vis and epoch % cfg["visualization"]["freq"] == 0:

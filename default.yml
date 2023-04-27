@@ -11,7 +11,7 @@ data:
 model:
   phi: InvertibleMLP
   phi_kwargs:
-  reuse_phi: False
+  reuse_phi: True
 train:
   epochs: 5000
   data:
@@ -26,44 +26,44 @@ train:
     lr: 0.001
     weight_decay: 1e-5
   scheduler: CosineAnnealingLR
-  # scheduler_kwargs:
-    # T_max: 1000
-    # eta_min: 1e-5
+  scheduler_kwargs:
+    T_max: 1000
+    eta_min: 1e-5
   use_cudnn_backend: True
 wandb:
   watch: False
   watch_freq: 50
-# eval:
-#   freq: 100
-#   metrics: [R2Score, MSE]
-#   save_scores: []
-#   data:
-#     all:
-#       mode: random
-#       n_samples: 10000
-#       resample: False
-#       transform: scale_latents
-#       batch_size: 1000
-#     ID:
-#       mode: orthogonal
-#       n_samples: 10000
-#       resample: False
-#       transform: scale_latents
-#       batch_size: 1000
-# visualization:
-#   freq: 100
-#   data:
-#     heatmap:
-#       type: heatmap
-#       mode: grid
-#       n_samples: 10000
-#       resample: False
-#       transform: scale_latents
-#       batch_size: 1000
-#     reconstruction:
-#       type: reconstruction
-#       mode: random
-#       n_samples: 10000
-#       resample: False
-#       transform: scale_latents
-#       batch_size: 5
+eval:
+  freq: 100
+  metrics: [R2Score, MSE]
+  save_scores: {}
+  data:
+    all:
+      mode: random
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+    ID:
+      mode: orthogonal
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+visualization:
+  freq: 100
+  data:
+    heatmap:
+      type: heatmap
+      mode: grid
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+    reconstruction:
+      type: reconstruction
+      mode: random
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 5
