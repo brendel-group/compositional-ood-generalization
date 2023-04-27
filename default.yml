@@ -10,7 +10,8 @@ data:
   C_kwargs: {}
 model:
   phi: InvertibleMLP
-  phi_kwargs: {}
+  phi_kwargs:
+  reuse_phi: False
 train:
   epochs: 5000
   data:

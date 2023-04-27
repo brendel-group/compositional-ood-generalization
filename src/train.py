@@ -16,6 +16,7 @@ import wandb
 from data import get_dataloader, get_dataloaders, sample_latents
 from models import *
 from vis import visualize_score_heatmaps, visualize_output_v_target
+from utils import all_equal
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -31,6 +32,8 @@ def _get_criterion(name: str, **kwargs) -> nn.Module:
         return nn.MSELoss(**kwargs)
     elif name == "crossentropy":
         return nn.CrossEntropyLoss(**kwargs)
+    elif name == "MSE+sparsity":
+        return lambda y, y_hat: nn.functional.mse_loss(y, y_hat) + 0.00001 * torch.norm(y_hat, p=1)
     else:
         raise ValueError(f"Unknown criterion {name}.")
 
@@ -179,8 +182,8 @@ def run(**cfg):
 
     # data generator
     phi = []
+    model = getattr(models, cfg["data"]["phi"])
     for d_in, d_out in zip(D, M):
-        model = getattr(models, cfg["data"]["phi"])
         phi.append(model(d_in, d_out, **cfg["data"]["phi_kwargs"]))
     phi = ParallelSlots(phi)
     C = getattr(models, cfg["data"]["C"])(**cfg["data"]["C_kwargs"])
@@ -188,10 +191,15 @@ def run(**cfg):
     f.eval()
 
     # model
-    phi_hat = []
-    for d_in, d_out in zip(D, M):
-        model = getattr(models, cfg["model"]["phi"])
-        phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
+    model = getattr(models, cfg["model"]["phi"])
+    if cfg["model"]["reuse_phi"]:
+        assert all_equal(D) and all_equal(M), \
+            f"Can't reuse modules for slots with different inputs/outputs {D, M}."
+        phi_hat = [model(D[0], M[0], **cfg["model"]["phi_kwargs"])] * len(D)
+    else:
+        phi_hat = []
+        for d_in, d_out in zip(D, M):
+            phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
     phi_hat = ParallelSlots(phi_hat)
     f_hat = CompositionalFunction(C, phi_hat).to(dev)
 
@@ -222,7 +230,7 @@ def run(**cfg):
     )
 
     # keep track of scores to save model
-    best_scores = {score: float("infg") for score in cfg["eval"]["save_scores"]}
+    best_scores = {score: float("inf") for score in cfg["eval"]["save_scores"]}
 
     for epoch in range(cfg["train"]["epochs"]):
         log = {}
@@ -238,7 +246,7 @@ def run(**cfg):
                 log.update(scores)
 
                 # save best models
-                for name, val in best_scores:
+                for name, val in best_scores.items():
                     if scores[name] < val:
                         scores[name] = val
                         torch.save(f_hat.state_dict(), save_dir / "best_{name}.pt")
