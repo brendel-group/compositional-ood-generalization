@@ -112,6 +112,9 @@ def _get_metrics(
         if name == "R2Score":
             r2 = R2Score(num_outputs=d_out, multioutput="uniform_average").to(dev)
             metrics[name] = lambda y, y_hat: r2(y_hat, y)
+        elif name == "R2ScoreVW":
+            r2 = R2Score(num_outputs=d_out, multioutput="variance_weighted").to(dev)
+            metrics[name] = lambda y, y_hat: r2(y_hat, y)
         elif name == "MSE":
             metrics[name] = MeanSquaredError().to(dev)
         else:
