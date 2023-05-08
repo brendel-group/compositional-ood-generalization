@@ -93,7 +93,7 @@ class DeconvMLP(nn.Sequential):
         d_in: int,
         d_out: List[int],
         d_hidden: int = 256,
-        n_layers: int = 3,
+        n_layers: int = 4,
         n_channel: int = 32,
         kernel_size: int = 4,
         stride: int = 2,

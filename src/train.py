@@ -190,13 +190,18 @@ def evaluate(
 def visualize_reconstruction(
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
+    monolithic: bool = False,
 ) -> plt.Figure:
     model.eval()
 
     x, z = next(iter(loader))
     z = z.to(dev)
 
-    x_hat, phi_hat = model(z, return_slot_outputs=True)
+    if monolithic:
+        x_hat = model(z)
+        phi_hat = [x_hat]
+    else:
+        x_hat, phi_hat = model(z, return_slot_outputs=True)
     phi_hat = [ph.cpu() for ph in phi_hat]
 
     fig = visualize_output_v_target(x.cpu(), x_hat.cpu(), phi_hat, logging=True)
@@ -257,22 +262,27 @@ def run(**cfg):
     f.eval()
 
     # model
-    model = getattr(models, cfg["model"]["phi"])
-    if cfg["model"]["reuse_phi"]:
-        assert all_equal(D) and all_equal(
-            M
-        ), f"Can't reuse modules for slots with different inputs/outputs {D, M}."
-        phi_hat = [model(D[0], M[0], **cfg["model"]["phi_kwargs"])] * len(D)
+    if cfg["model"]["monolithic"]:
+        model = getattr(models, cfg["model"]["phi"])
+        f_hat = model(sum(D), M[0], **cfg["model"]["phi_kwargs"]).to(dev)
     else:
-        phi_hat = []
-        for d_in, d_out in zip(D, M):
-            phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
-    phi_hat = ParallelSlots(phi_hat)
-    f_hat = CompositionalFunction(C, phi_hat).to(dev)
+        model = getattr(models, cfg["model"]["phi"])
+        if cfg["model"]["reuse_phi"]:
+            assert all_equal(D) and all_equal(
+                M
+            ), f"Can't reuse modules for slots with different inputs/outputs {D, M}."
+            phi_hat = [model(D[0], M[0], **cfg["model"]["phi_kwargs"])] * len(D)
+        else:
+            phi_hat = []
+            for d_in, d_out in zip(D, M):
+                phi_hat.append(model(d_in, d_out, **cfg["model"]["phi_kwargs"]))
+        phi_hat = ParallelSlots(phi_hat)
+        f_hat = CompositionalFunction(C, phi_hat).to(dev)
 
-    checkpoint = cfg["train"].get("checkpoint", None)
-    if checkpoint is not None:
-        f_hat.load_state_dict(torch.load(checkpoint))
+        checkpoint = cfg["train"].get("checkpoint", None)
+        if checkpoint is not None:
+            f_hat.load_state_dict(torch.load(checkpoint))
+    
 
     # TODO check whether we need background prefetching
     ldr_kwargs = dict(num_workers=8, pin_memory=True if dev == "cuda:0" else False)
@@ -359,7 +369,7 @@ def run(**cfg):
                 if vis_type == "heatmap":
                     fig = visualize_mse_on_grid(f_hat, vis_ldrs[vis_name], D)
                 elif vis_type == "reconstruction":
-                    fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name])
+                    fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name], cfg["model"].get("monolithic", False))
                 else:
                     raise ValueError(f"Unsupported visualization type {vis_type}.")
                 log.update({vis_name: wandb.Image(fig)})
