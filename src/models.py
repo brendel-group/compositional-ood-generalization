@@ -153,6 +153,59 @@ class DeconvMLP(nn.Sequential):
             self.append(nn.Sigmoid())
 
 
+class UpsampleMLP(nn.Sequential):
+    def __init__(
+        self, 
+        d_in: int,
+        d_out: List[int],
+        d_hidden: int = 256,
+        n_layers: int = 4,
+        n_channel: int = 32,
+        kernel_size: int = 4,
+        nonlin: nn.Module = nn.ELU(),
+        **kwargs
+    ):
+        super().__init__()
+        self.d_in = d_in
+        self.d_out = d_out
+
+        # TODO at the moment, this is hard-coded for this specific size
+        assert d_out in [
+            [64, 64, 3],
+            [64, 64, 4],
+        ], f"Expecting output size [64, 64, 3] or [64, 64, 4], but got {d_out}."
+
+        if isinstance(nonlin, str):
+            nonlin = getattr(nn, nonlin)()
+
+        self.append(nn.Linear(d_in, d_hidden))
+
+        for _ in range(n_layers - 2):
+            self.append(nonlin)
+            self.append(nn.Linear(d_hidden, d_hidden))
+
+        self.append(nonlin)
+        self.append(nn.Linear(d_hidden, n_channel * 4 * 4))
+
+        self.append(nn.Unflatten(1, (n_channel, 4, 4)))
+
+        for _ in range(3):
+            self.append(nonlin)
+            self.append(nn.UpsamplingBilinear2d(scale_factor=2))
+            self.append(
+                nn.Conv2d(n_channel, n_channel, kernel_size, padding="same")
+            )
+
+        self.append(nonlin)
+        self.append(nn.UpsamplingBilinear2d(scale_factor=2))
+        self.append(
+            nn.Conv2d(n_channel, d_out[-1], kernel_size, padding="same")
+        )
+
+        # [B, W, H, C]
+        self.append(Permute((0, 2, 3, 1)))
+
+
 class SpriteworldRenderer(nn.Module):
     def __init__(
         self,
