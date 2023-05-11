@@ -245,9 +245,11 @@ def run(**cfg):
     # each time
     if cfg["train"]["use_cudnn_backend"]:
         torch.backends.cudnn.benchmark = True
-    random.seed(cfg["seed"])
-    np.random.seed(cfg["seed"])
-    torch.manual_seed(cfg["seed"])
+    
+    if cfg["seed"] is not None:
+        random.seed(cfg["seed"])
+        np.random.seed(cfg["seed"])
+        torch.manual_seed(cfg["seed"])
 
     D, M = cfg["data"]["D"], cfg["data"]["M"]
 
