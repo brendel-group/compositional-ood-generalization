@@ -127,6 +127,7 @@ def _train_epoch(
     loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
+    accum_batches: int=1,
 ):
     model.train()
     loss_accum = 0
@@ -140,15 +141,18 @@ def _train_epoch(
 
         time_data = time_start - time.time()
 
-        optimizer.zero_grad()
-
         x_hat = model(z)
 
         loss = criterion(x, x_hat)
+        loss = loss / accum_batches
         loss_accum += loss.item()
-
+    	
         loss.backward()
-        optimizer.step()
+
+        if ((batch + 1) % accum_batches == 0) or ((batch + 1) == len(loader)):
+            optimizer.step()
+            optimizer.zero_grad()
+
 
         time_compute = time_start - time.time()
         compute_efficiency_accum += time_compute / (time_compute + time_data)
@@ -331,13 +335,13 @@ def run(**cfg):
         log = {}
 
         # train
-        loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer, criterion)
+        loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer, criterion, cfg["train"]["accum_batches"])
         log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
         scheduler.step()
 
         # evaluate
-        if do_eval and epoch % cfg["eval"]["freq"] == 0:
+        if do_eval and (epoch + 1) % cfg["eval"]["freq"] == 0:
             scores = evaluate(f_hat, eval_ldrs, eval_metrics)
             log.update(scores)
 

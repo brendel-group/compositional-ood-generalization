@@ -14,6 +14,7 @@ model:
   reuse_phi: True
 train:
   epochs: 5000
+  accum_batches: 1
   data:
     mode: random
     n_samples: 10000
