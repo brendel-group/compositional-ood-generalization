@@ -161,7 +161,7 @@ class UpsampleMLP(nn.Sequential):
         d_hidden: int = 256,
         n_layers: int = 4,
         n_channel: int = 32,
-        kernel_size: int = 1,
+        kernel_size: int = 2,
         nonlin: nn.Module = nn.ELU(),
         **kwargs
     ):

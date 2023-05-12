@@ -336,11 +336,6 @@ def run(**cfg):
 
         scheduler.step()
 
-        # don't evaluate in first epoch
-        if epoch == 0:
-            wandb.log(log)
-            continue
-
         # evaluate
         if do_eval and epoch % cfg["eval"]["freq"] == 0:
             scores = evaluate(f_hat, eval_ldrs, eval_metrics)
@@ -365,7 +360,7 @@ def run(**cfg):
                         print(f"Saved {name} in epoch {epoch}.")
 
         # visualize
-        if do_vis and epoch % cfg["visualization"]["freq"] == 0:
+        if do_vis and (epoch + 1) % cfg["visualization"]["freq"] == 0:
             for vis_name, vis_cfg in cfg["visualization"]["data"].items():
                 vis_type = vis_cfg["type"]
                 if vis_type == "heatmap":
