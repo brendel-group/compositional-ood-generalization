@@ -35,7 +35,7 @@ wandb:
   watch_freq: 50
 eval:
   freq: 100
-  metrics: [R2Score, MSE]
+  metrics: [MSE]
   save_scores: {}
   data:
     all:
