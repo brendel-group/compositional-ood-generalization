@@ -1,6 +1,7 @@
 import datetime
 import random
 import time
+from tqdm import tqdm
 from math import ceil, prod
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -331,7 +332,7 @@ def run(**cfg):
         optimizer, **cfg["train"]["scheduler_kwargs"]
     )
 
-    for epoch in range(cfg["train"]["epochs"]):
+    for epoch in tqdm(range(cfg["train"]["epochs"])):
         log = {}
 
         # train

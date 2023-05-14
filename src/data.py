@@ -89,6 +89,9 @@ def _sample_orthogonal(
     n_samples: int,
     dim_per_slot: List[int],
     planes: List[Tuple[int, List[float]]] = None,
+    distribution: str = "uniform",
+    mean: float = 0,
+    std: float = 1
 ) -> torch.Tensor:
     """Sample randomly within a slot, while fixing the other slots on specific coordinates.
 
@@ -104,18 +107,31 @@ def _sample_orthogonal(
 
     # collect points on each plane
     z = torch.Tensor(0, total_dim)
-    for slot, coords in planes:
-        remaining_dims = total_dim - dim_per_slot[slot]
-        assert (
-            len(coords) == remaining_dims
-        ), f"Plane needs {remaining_dims} latents, but only got {len(coords)}."
+    while z.shape[0] < n_samples:
+        for slot, coords in planes:
+            remaining_dims = total_dim - dim_per_slot[slot]
+            assert (
+                len(coords) == remaining_dims
+            ), f"Plane needs {remaining_dims} latents, but only got {len(coords)}."
 
-        # only one slot is chosen randomly, the others are specified
-        z_slot = torch.rand(n_samples, dim_per_slot[slot])
-        z_rest = torch.Tensor(coords).view(1, -1).repeat(n_samples, 1)
-        start_dim = sum(dim_per_slot[:slot])
-        _z = torch.cat([z_rest[:, :start_dim], z_slot, z_rest[:, start_dim:]], dim=1)
-        z = torch.cat([z, _z])
+            # only one slot is chosen randomly, the others are specified
+            if distribution == "uniform":
+                z_slot = torch.rand(n_samples, dim_per_slot[slot])
+            elif distribution == "normal":
+                z_slot = torch.randn(n_samples, dim_per_slot[slot]) * std + mean
+            else:
+                raise ValueError(f"Unknown distribution type {distribution}.")
+            z_rest = torch.Tensor(coords).view(1, -1).repeat(n_samples, 1)
+            start_dim = sum(dim_per_slot[:slot])
+            _z = torch.cat([z_rest[:, :start_dim], z_slot, z_rest[:, start_dim:]], dim=1)
+            # z = torch.cat([z, _z])
+
+            # only keep samples inside the unit-cube
+            mask = ((_z - 0.5).abs() <= 0.5).flatten(1).all(1)
+            idx = mask.nonzero().squeeze(1)
+
+            z = torch.cat([z, _z[idx].flatten(1)])
+
 
     return z[torch.randperm(z.shape[0])][:n_samples]
 
