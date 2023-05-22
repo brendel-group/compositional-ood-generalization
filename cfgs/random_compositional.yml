@@ -1,0 +1,12 @@
+save_name: random_compositional
+train:
+  data:
+    mode: random
+eval:
+  data:
+    ID:
+      mode: random
+visualization:
+  data:
+    reconstruction_ID:
+      mode: random

@@ -1,0 +1,84 @@
+save_name: CGFP
+save_dir: ~/
+seed: 0
+data:
+  D: [5, 5]
+  M: [[64, 64, 3], [64, 64, 3]]
+  phi: SpriteworldRenderer
+  phi_kwargs: {}
+  C: OccludeAdd
+  C_kwargs:
+    add: sigmoid
+model:
+  phi: UpsampleMLP
+  phi_kwargs:
+    d_hidden: 256
+    n_channel: 32
+    nonlin: ELU
+    kernel_size: 2
+  reuse_phi: False
+  monolithic: False
+train:
+  epochs: 2000
+  accum_batches: 1
+  data:
+    mode: null
+    n_samples: 100000
+    resample: False
+    transform: scale_latents
+    batch_size: 512
+  loss: MSE
+  loss_kwargs: {}
+  optimizer: AdamW
+  optimizer_kwargs:
+    lr: 0.001
+    weight_decay: 1e-5
+  scheduler: CosineAnnealingLR
+  scheduler_kwargs:
+    T_max: 2000
+    eta_min: 1e-5
+  use_cudnn_backend: True
+wandb:
+  watch: False
+  watch_freq: 100
+eval:
+  freq: 100
+  metrics: [MSE, R2ScoreVW]
+  save_scores: {}
+  data:
+    all:
+      mode: random
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+    ID:
+      mode: null
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000
+visualization:
+  freq: 100
+  data:
+    reconstruction_all:
+      type: reconstruction
+      mode: random
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 5
+    reconstruction_ID:
+      type: reconstruction
+      mode: null
+      n_amples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 5
+    heatmap:
+      type: heatmap
+      mode: grid
+      n_samples: 10000
+      resample: False
+      transform: scale_latents
+      batch_size: 1000

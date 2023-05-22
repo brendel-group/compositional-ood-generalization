@@ -107,7 +107,6 @@ class DeconvMLP(nn.Sequential):
         self.d_in = d_in
         self.d_out = d_out
 
-        # TODO at the moment, this is hard-coded for this specific size
         assert d_out in [
             [64, 64, 3],
             [64, 64, 4],
@@ -155,7 +154,7 @@ class DeconvMLP(nn.Sequential):
 
 class UpsampleMLP(nn.Sequential):
     def __init__(
-        self, 
+        self,
         d_in: int,
         d_out: List[int],
         d_hidden: int = 256,
@@ -163,13 +162,12 @@ class UpsampleMLP(nn.Sequential):
         n_channel: int = 32,
         kernel_size: int = 2,
         nonlin: nn.Module = nn.ELU(),
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.d_in = d_in
         self.d_out = d_out
 
-        # TODO at the moment, this is hard-coded for this specific size
         assert d_out in [
             [64, 64, 3],
             [64, 64, 4],
@@ -192,15 +190,11 @@ class UpsampleMLP(nn.Sequential):
         for _ in range(3):
             self.append(nonlin)
             self.append(nn.UpsamplingBilinear2d(scale_factor=2))
-            self.append(
-                nn.Conv2d(n_channel, n_channel, kernel_size, padding="same")
-            )
+            self.append(nn.Conv2d(n_channel, n_channel, kernel_size, padding="same"))
 
         self.append(nonlin)
         self.append(nn.UpsamplingBilinear2d(scale_factor=2))
-        self.append(
-            nn.Conv2d(n_channel, d_out[-1], kernel_size, padding="same")
-        )
+        self.append(nn.Conv2d(n_channel, d_out[-1], kernel_size, padding="same"))
 
         # [B, W, H, C]
         self.append(Permute((0, 2, 3, 1)))
@@ -275,7 +269,6 @@ class ParallelSlots(nn.Module):
         return self.slot_functions[item]
 
 
-# TODO clean up composition function signatures: are they input shape agnostic or not?
 class Composition(nn.Module, ABC):
     """Abstract base class for all composition functions."""
 
@@ -360,9 +353,6 @@ class OccludeAdd(Composition):
                 f"Linear Composition expects slots with equal output size, \
                 but got shapes {[_x.shape for _x in x]}."
             )
-
-        # TODO either include an alpha channel in the individual slot outputs,
-        # or do anti-aliasing here.
 
         # split outputs from each slot
         out = x[:, 0, ...]

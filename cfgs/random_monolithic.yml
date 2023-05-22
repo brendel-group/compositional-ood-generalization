@@ -1,0 +1,17 @@
+save_name: random_monolithic
+train:
+  data:
+    mode: random
+eval:
+  data:
+    ID:
+      mode: random
+visualization:
+  data:
+    reconstruction_ID:
+      mode: random
+model:
+  phi_kwargs:
+    d_hidden: 320
+    n_channel: 64
+  monolithic: True

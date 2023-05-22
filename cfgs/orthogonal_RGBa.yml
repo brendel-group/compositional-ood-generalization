@@ -1,0 +1,32 @@
+data:
+  M: [[64, 64, 4], [64, 64, 4]]
+  C: AlphaAdd
+  C_kwargs: {}
+model:
+  reuse_phi: True
+train:
+  data:
+    mode: orthogonal
+    planes: [
+      (0, [1, 1, 1, 0, 1]),
+      (1, [0, 0, 0, 0, 0]),
+      (1, [0.5, 0.5, 0.5, 0, 0.5])
+    ]
+eval:
+  data:
+    ID:
+      mode: orthogonal
+      planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.5, 0.5, 0.5, 0, 0.5])
+      ]
+visualization:
+  data:
+    reconstruction_ID:
+      mode: orthogonal
+      planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.5, 0.5, 0.5, 0, 0.5])
+      ]

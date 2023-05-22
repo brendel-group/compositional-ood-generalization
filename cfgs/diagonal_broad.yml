@@ -1,0 +1,15 @@
+save_name: diagonal_broad
+train:
+  data:
+    mode: diagonal
+    delta: 0.2
+eval:
+  data:
+    ID:
+      mode: diagonal
+      delta: 0.2
+visualization:
+  data:
+    reconstruction_ID:
+      mode: diagonal
+      delta: 0.2

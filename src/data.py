@@ -11,8 +11,6 @@ from models import CompositionalFunction
 from utils import all_equal
 
 
-# TODO clean up the redundancy in this file, e.g. "gaps" duplicates the same behavior
-# in multiple functions
 def sample_latents(
     dim_per_slot: List[int], mode: str = "random", n_samples: int = None, **kwargs
 ) -> torch.Tensor:
@@ -91,7 +89,7 @@ def _sample_orthogonal(
     planes: List[Tuple[int, List[float]]] = None,
     distribution: str = "uniform",
     mean: float = 0,
-    std: float = 1
+    std: float = 1,
 ) -> torch.Tensor:
     """Sample randomly within a slot, while fixing the other slots on specific coordinates.
 
@@ -123,7 +121,9 @@ def _sample_orthogonal(
                 raise ValueError(f"Unknown distribution type {distribution}.")
             z_rest = torch.Tensor(coords).view(1, -1).repeat(n_samples, 1)
             start_dim = sum(dim_per_slot[:slot])
-            _z = torch.cat([z_rest[:, :start_dim], z_slot, z_rest[:, start_dim:]], dim=1)
+            _z = torch.cat(
+                [z_rest[:, :start_dim], z_slot, z_rest[:, start_dim:]], dim=1
+            )
             # z = torch.cat([z, _z])
 
             # only keep samples inside the unit-cube
@@ -131,7 +131,6 @@ def _sample_orthogonal(
             idx = mask.nonzero().squeeze(1)
 
             z = torch.cat([z, _z[idx].flatten(1)])
-
 
     return z[torch.randperm(z.shape[0])][:n_samples]
 

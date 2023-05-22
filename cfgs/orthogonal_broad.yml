@@ -1,0 +1,30 @@
+save_name: orthogonal_broad
+train:
+  data:
+    mode: orthogonal
+    planes: [
+      (0, [1, 1, 1, 0, 1]),
+      (0, [0.7, 0.7, 0.7, 0, 0.7]),
+      (1, [0, 0, 0, 0, 0]),
+      (1, [0.3, 0.3, 0.3, 0, 0.3])
+    ]
+eval:
+  data:
+    ID:
+      mode: orthogonal
+      planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (0, [0.7, 0.7, 0.7, 0, 0.7]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.3, 0.3, 0.3, 0, 0.3])
+      ]
+visualization:
+  data:
+    reconstruction_ID:
+      mode: orthogonal
+        planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (0, [0.7, 0.7, 0.7, 0, 0.7]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.3, 0.3, 0.3, 0, 0.3])
+      ]

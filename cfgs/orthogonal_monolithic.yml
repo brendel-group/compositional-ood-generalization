@@ -1,0 +1,32 @@
+save_name: orthogonal_monolithic
+train:
+  data:
+    mode: orthogonal
+    planes: [
+      (0, [1, 1, 1, 0, 1]),
+      (1, [0, 0, 0, 0, 0]),
+      (1, [0.5, 0.5, 0.5, 0, 0.5])
+    ]
+eval:
+  data:
+    ID:
+      mode: orthogonal
+      planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.5, 0.5, 0.5, 0, 0.5])
+      ]
+visualization:
+  data:
+    reconstruction_ID:
+      mode: orthogonal
+      planes: [
+        (0, [1, 1, 1, 0, 1]),
+        (1, [0, 0, 0, 0, 0]),
+        (1, [0.5, 0.5, 0.5, 0, 0.5])
+      ]
+model:
+  phi_kwargs:
+    d_hidden: 320
+    n_channel: 64
+  monolithic: True

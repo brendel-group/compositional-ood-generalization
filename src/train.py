@@ -128,7 +128,7 @@ def _train_epoch(
     loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    accum_batches: int=1,
+    accum_batches: int = 1,
 ):
     model.train()
     loss_accum = 0
@@ -147,13 +147,12 @@ def _train_epoch(
         loss = criterion(x, x_hat)
         loss = loss / accum_batches
         loss_accum += loss.item()
-    	
+
         loss.backward()
 
         if ((batch + 1) % accum_batches == 0) or ((batch + 1) == len(loader)):
             optimizer.step()
             optimizer.zero_grad()
-
 
         time_compute = time_start - time.time()
         compute_efficiency_accum += time_compute / (time_compute + time_data)
@@ -250,7 +249,7 @@ def run(**cfg):
     # each time
     if cfg["train"]["use_cudnn_backend"]:
         torch.backends.cudnn.benchmark = True
-    
+
     if cfg["seed"] is not None:
         random.seed(cfg["seed"])
         np.random.seed(cfg["seed"])
@@ -289,9 +288,7 @@ def run(**cfg):
         checkpoint = cfg["train"].get("checkpoint", None)
         if checkpoint is not None:
             f_hat.load_state_dict(torch.load(checkpoint))
-    
 
-    # TODO check whether we need background prefetching
     ldr_kwargs = dict(num_workers=8, pin_memory=True if dev == "cuda:0" else False)
 
     # data and metrics
@@ -322,8 +319,6 @@ def run(**cfg):
     if cfg["wandb"]["watch"]:
         wandb.watch(f_hat, log="all", log_freq=cfg["wandb"]["watch_freq"])
 
-    # TODO consider setting up multi-GPU training (DistributedDataParallel)
-
     optimizer = getattr(torch.optim, cfg["train"]["optimizer"])(
         f_hat.parameters(),
         **cfg["train"]["optimizer_kwargs"],
@@ -336,7 +331,9 @@ def run(**cfg):
         log = {}
 
         # train
-        loss, compute_efficiency = _train_epoch(f_hat, train_ldr, optimizer, criterion, cfg["train"]["accum_batches"])
+        loss, compute_efficiency = _train_epoch(
+            f_hat, train_ldr, optimizer, criterion, cfg["train"]["accum_batches"]
+        )
         log.update({"loss": loss, "compute_efficiency": compute_efficiency})
 
         scheduler.step()
@@ -347,7 +344,6 @@ def run(**cfg):
             log.update(scores)
 
             # save best models
-            # TODO refactor this
             for name, mode in save_scores.items():
                 val = scores[name]
                 current_best = best_scores[name]
@@ -371,7 +367,9 @@ def run(**cfg):
                 if vis_type == "heatmap":
                     fig = visualize_mse_on_grid(f_hat, vis_ldrs[vis_name], D)
                 elif vis_type == "reconstruction":
-                    fig = visualize_reconstruction(f_hat, vis_ldrs[vis_name], cfg["model"].get("monolithic", False))
+                    fig = visualize_reconstruction(
+                        f_hat, vis_ldrs[vis_name], cfg["model"].get("monolithic", False)
+                    )
                 else:
                     raise ValueError(f"Unsupported visualization type {vis_type}.")
                 log.update({vis_name: wandb.Image(fig)})
