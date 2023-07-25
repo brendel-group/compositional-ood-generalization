@@ -243,7 +243,7 @@ def run(**cfg):
     save_dir.mkdir(parents=True, exist_ok=False)
     cfg["save_dir"] = save_dir
 
-    wandb.init(project="COOD", config=cfg)
+    wandb.init(project="CGFP", config=cfg)
 
     # NOTE only set this if input/output has constant size, otherwise graph is optimized
     # each time
